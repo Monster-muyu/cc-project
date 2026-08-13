@@ -32,24 +32,32 @@
     <label>显卡 <select id="gpu"></select></label>
 
     <hr/>
-    <label>上下文长度 <input id="context_len" type="number" value="4096" min="256" step="1024"/></label>
+    <label>上下文长度 <span id="ctx-val" class="hint"></span>
+      <input id="context_len" type="text" value="4096" placeholder="4096 / 32k / 200k"/>
+    </label>
     <label>并发请求数 <input id="concurrency" type="number" value="1" min="1"/></label>
 
     <hr/>
     <label>推理引擎 <select id="engine">
       {% for e in engines %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
     </select></label>
-    <div class="row">
-      <label>TP <select id="tp"></select></label>
-      <label>PP <select id="pp"></select></label>
-      <label id="ep-label">EP <select id="ep"></select></label>
-    </div>
+    <label>显卡数量 <select id="gpu_count"></select></label>
+    <p class="hint" id="parallel-hint">单卡部署。</p>
+    <details>
+      <summary class="hint">高级：自定义 TP / PP / EP 并行</summary>
+      <div class="row">
+        <label>TP <select id="tp"></select></label>
+        <label>PP <select id="pp"></select></label>
+        <label>EP <select id="ep"></select></label>
+      </div>
+    </details>
     <label>KV 量化 <select id="kv_quant">
       {% for k in kv_quants %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
     </select></label>
     <label>CPU offload <span id="offload-val">0%</span>
       <input id="cpu_offload" type="range" min="0" max="1" step="0.1" value="0"/>
     </label>
+    <p class="hint">把部分模型层放内存(CPU)而非显存——显存不够时用它换速度(会变慢,llama.cpp 专属)</p>
   </section>
 
   <section class="card panel-right">

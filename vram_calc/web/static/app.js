@@ -9,11 +9,48 @@ const CAT_LABEL = { llm: "LLM", embedding: "向量", multimodal: "多模态", vi
 let ALL_MODELS = [];
 let activeCat = "all";
 
+function currentModelIsMoe() {
+  const m = ALL_MODELS.find((x) => x.id === $("model").value);
+  return !!(m && m.is_moe);
+}
+
+// map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP)
+function applyParallelStrategy() {
+  const n = +$("gpu_count").value || 1;
+  $("tp").value = 1; $("pp").value = 1; $("ep").value = 1;
+  const hint = $("parallel-hint");
+  if (n === 1) { hint.textContent = "单卡部署。模型放不下时调高显卡数量分摊。"; return; }
+  if (currentModelIsMoe()) {
+    $("ep").value = n;
+    hint.textContent = `${n} 卡专家并行(EP)：每卡只装 1/${n} 的专家权重`;
+  } else {
+    $("tp").value = n;
+    hint.textContent = `${n} 卡张量并行(TP)：每卡显存 ≈ 总量 ÷ ${n}`;
+  }
+}
+
+// accept "4096" / "32k" / "200k" / "1m"
+function parseContext(s) {
+  s = String(s).trim().toLowerCase().replace(/[,，\s]/g, "");
+  const m = s.match(/^(\d+(?:\.\d+)?)([km])?$/);
+  if (!m) return NaN;
+  let n = parseFloat(m[1]);
+  if (m[2] === "k") n *= 1000;
+  else if (m[2] === "m") n *= 1000000;
+  return Math.round(n);
+}
+function onContextInput() {
+  const n = parseContext($("context_len").value);
+  $("ctx-val").textContent = isNaN(n) ? "(无效)" : `= ${n.toLocaleString()}`;
+}
+
 async function init() {
   await loadDropdowns();
   for (const id of ["tp", "pp"]) PARALLEL.forEach((n) => $(id).add(new Option(n, n)));
   EP_VALS.forEach((n) => $("ep").add(new Option(n, n)));
+  [1, 2, 4, 8].forEach((n) => $("gpu_count").add(new Option(n, n)));
   bindEvents();
+  onContextInput();
   onModelChange();
   recalc();
 }
@@ -55,16 +92,13 @@ function filterModels() {
 }
 
 function onModelChange() {
-  const m = ALL_MODELS.find((x) => x.id === $("model").value);
-  const moe = !!(m && m.is_moe);
-  $("ep-label").style.display = moe ? "" : "none";
-  if (!moe) $("ep").value = "1";
+  applyParallelStrategy();
 }
 
 function currentInput() {
   return {
     model_id: $("model").value, gpu_id: $("gpu").value, quant: $("quant").value,
-    context_len: +$("context_len").value || 4096, concurrency: +$("concurrency").value || 1,
+    context_len: parseContext($("context_len").value) || 4096, concurrency: +$("concurrency").value || 1,
     engine: $("engine").value, tp: +$("tp").value || 1, pp: +$("pp").value || 1,
     ep: +$("ep").value || 1, kv_quant: $("kv_quant").value, cpu_offload: +$("cpu_offload").value,
   };
@@ -74,10 +108,11 @@ let timer;
 function bindEvents() {
   const debounced = () => { clearTimeout(timer); timer = setTimeout(recalc, 300); };
   ["quant", "gpu", "engine", "tp", "pp", "ep", "kv_quant",
-   "context_len", "concurrency", "cpu_offload", "model"].forEach((id) =>
+   "context_len", "concurrency", "cpu_offload", "model", "gpu_count"].forEach((id) =>
     $(id).addEventListener("input", () => {
       if (id === "cpu_offload") $("offload-val").textContent = Math.round(+$("cpu_offload").value * 100) + "%";
-      if (id === "model") onModelChange();
+      if (id === "context_len") onContextInput();
+      if (id === "model" || id === "gpu_count") onModelChange();
       debounced();
     }));
   $("btn-add-model").onclick = openModelModal;
