@@ -134,11 +134,12 @@ function renderResult(r) {
   const map = { ok: ["🟢 放得下", C.good], tight: ["🟡 偏紧", C.warn], over: ["🔴 放不下", C.crit] };
   const [txt, col] = map[r.verdict];
   const hd = r.headroom_gb;
+  const perGpu = r.num_gpus > 1 ? `（每卡 ${r.per_gpu_gb} GB）` : "";
   const v = $("verdict");
   v.className = "verdict " + r.verdict;
-  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b> ` +
+  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b>${perGpu} ` +
     `/ 可用 ${r.usable_gb} GB（${hd >= 0 ? "余 " + hd : "差 " + (-hd).toFixed(2)} GB）` +
-    (r.num_gpus > 1 ? ` · ${r.num_gpus} 卡并行` : "");
+    (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "");
   $("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
   $("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);

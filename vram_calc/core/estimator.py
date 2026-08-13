@@ -126,9 +126,9 @@ def estimate(inp: EstimateInput) -> Estimate:
     kv = (2 * layers_per_gpu * inp.context_len * kv_heads_per_gpu
           * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
 
-    # --- activation (GB) ---
+    # --- activation (GB) --- scales with the share of the model on this GPU
     activation = (inp.concurrency * inp.context_len * m.hidden_dim
-                  * bpp * ACTIVATION_COEFF) / GB * gpu_frac
+                  * bpp * ACTIVATION_COEFF) / GB * gpu_frac / (inp.tp * inp.pp)
 
     # --- overhead ---
     eng = get_engine(inp.engine)

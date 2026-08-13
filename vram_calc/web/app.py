@@ -83,14 +83,17 @@ def api_calc(req: CalcReq):
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     b = r.breakdown
+    n = r.num_gpus
+    # present AGGREGATE across all n cards; per-GPU share reported separately
     return {
         "verdict": r.verdict,
-        "total_gb": round(b.total, 2),
-        "capacity_gb": r.capacity_gb,
-        "usable_gb": round(r.usable_gb, 2),
-        "headroom_gb": round(r.headroom_gb, 2),
-        "breakdown": {k: round(v, 2) for k, v in b.as_dict().items()},
-        "num_gpus": r.num_gpus,
+        "total_gb": round(b.total * n, 2),
+        "per_gpu_gb": round(b.total, 2),
+        "capacity_gb": round(r.capacity_gb * n, 2),
+        "usable_gb": round(r.usable_gb * n, 2),
+        "headroom_gb": round(r.headroom_gb * n, 2),
+        "breakdown": {k: round(v * n, 2) for k, v in b.as_dict().items()},
+        "num_gpus": n,
     }
 
 
@@ -102,17 +105,18 @@ def api_sweep(req: CalcReq,
         base = _estimate(req)
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
+    n = base.num_gpus
     points = []
     for x in range(max(x0, 1), x1 + 1):
         try:
             r = _estimate(req.model_copy(update={sweep_var: x}))
-            points.append({"x": x, "total_gb": round(r.breakdown.total, 2)})
+            points.append({"x": x, "total_gb": round(r.breakdown.total * n, 2)})
         except Exception:
             break
-    usable = base.usable_gb
+    usable = round(base.usable_gb * n, 2)
     max_x = max((p["x"] for p in points if p["total_gb"] <= usable), default=None)
-    return {"points": points, "capacity_gb": base.capacity_gb,
-            "usable_gb": round(usable, 2), "max_x": max_x}
+    return {"points": points, "capacity_gb": round(base.capacity_gb * n, 2),
+            "usable_gb": usable, "max_x": max_x}
 
 
 @app.get("/api/models/preview")
