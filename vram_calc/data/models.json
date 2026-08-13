@@ -1,0 +1,10 @@
+[
+  {"id": "meta-llama/Meta-Llama-3-8B", "name": "Llama 3 8B", "params_b": 8.03, "layers": 32, "hidden_dim": 4096, "attn_heads": 32, "kv_heads": 8, "head_dim": 128, "vocab_size": 128256, "num_experts": 0, "expert_params_b": 0, "category": "llm"},
+  {"id": "meta-llama/Meta-Llama-3-70B", "name": "Llama 3 70B", "params_b": 70.0, "layers": 80, "hidden_dim": 8192, "attn_heads": 64, "kv_heads": 8, "head_dim": 128, "vocab_size": 128256, "num_experts": 0, "expert_params_b": 0, "category": "llm"},
+  {"id": "meta-llama/Llama-3.1-405B", "name": "Llama 3.1 405B", "params_b": 405.0, "layers": 126, "hidden_dim": 16384, "attn_heads": 128, "kv_heads": 8, "head_dim": 128, "vocab_size": 128256, "num_experts": 0, "expert_params_b": 0, "category": "llm"},
+  {"id": "Qwen/Qwen2.5-7B-Instruct", "name": "Qwen2.5 7B Instruct", "params_b": 7.62, "layers": 28, "hidden_dim": 3584, "attn_heads": 28, "kv_heads": 4, "head_dim": 128, "vocab_size": 152064, "num_experts": 0, "expert_params_b": 0, "category": "llm"},
+  {"id": "Qwen/Qwen2.5-72B-Instruct", "name": "Qwen2.5 72B Instruct", "params_b": 72.7, "layers": 80, "hidden_dim": 8192, "attn_heads": 64, "kv_heads": 8, "head_dim": 128, "vocab_size": 152064, "num_experts": 0, "expert_params_b": 0, "category": "llm"},
+  {"id": "mistralai/Mistral-7B-Instruct-v0.3", "name": "Mistral 7B v0.3", "params_b": 7.25, "layers": 32, "hidden_dim": 4096, "attn_heads": 32, "kv_heads": 8, "head_dim": 128, "vocab_size": 32768, "num_experts": 0, "expert_params_b": 0, "category": "llm"},
+  {"id": "mistralai/Mixtral-8x7B-Instruct-v0.1", "name": "Mixtral 8x7B Instruct", "params_b": 46.7, "layers": 32, "hidden_dim": 4096, "attn_heads": 32, "kv_heads": 8, "head_dim": 128, "vocab_size": 32000, "num_experts": 8, "expert_params_b": 45.0, "category": "llm", "note": "MoE"},
+  {"id": "deepseek-ai/DeepSeek-V3", "name": "DeepSeek V3", "params_b": 671.0, "layers": 61, "hidden_dim": 7168, "attn_heads": 128, "kv_heads": 128, "head_dim": 128, "vocab_size": 129280, "num_experts": 256, "expert_params_b": 660.0, "category": "llm", "note": "MoE + MLA (KV cache approximate)"}
+]
