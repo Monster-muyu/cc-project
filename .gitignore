@@ -29,3 +29,6 @@ htmlcov/
 Thumbs.db
 
 # 临时文件(CLAUDE.md 规范:临时文件在 E:\Claude_Code_Download\tmp, 不在本项目内)
+
+# Playwright MCP 运行产物(截图/快照/日志)
+.playwright-mcp/
