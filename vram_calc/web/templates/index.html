@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>VRAM 显存计算工具</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+<header>
+  <h1>显存计算工具</h1>
+  <div class="actions">
+    <button id="btn-add-model">＋ 添加模型</button>
+    <button id="btn-add-gpu">＋ 添加显卡</button>
+  </div>
+</header>
+
+<main>
+  <section class="panel-left">
+    <h2>选择参数</h2>
+    <label>模型 <select id="model"></select></label>
+    <label>量化 <select id="quant">
+      {% for q in quants %}<option value="{{ q }}">{{ q }}</option>{% endfor %}
+    </select></label>
+    <label>显卡 <select id="gpu"></select></label>
+
+    <hr/>
+    <label>上下文长度 <input id="context_len" type="number" value="4096" min="256" step="1024"/></label>
+    <label>并发请求数 <input id="concurrency" type="number" value="1" min="1"/></label>
+
+    <hr/>
+    <label>推理引擎 <select id="engine">
+      {% for e in engines %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+    </select></label>
+    <div class="row">
+      <label>TP <select id="tp"></select></label>
+      <label>PP <select id="pp"></select></label>
+      <label id="ep-label">EP <select id="ep"></select></label>
+    </div>
+    <label>KV 量化 <select id="kv_quant">
+      {% for k in kv_quants %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
+    </select></label>
+    <label>CPU offload <span id="offload-val">0%</span>
+      <input id="cpu_offload" type="range" min="0" max="1" step="0.1" value="0"/>
+    </label>
+  </section>
+
+  <section class="panel-right">
+    <div id="verdict" class="verdict">加载中…</div>
+    <h3>显存占用 vs 容量</h3>
+    <div id="chart-capacity"></div>
+    <h3>组成分解</h3>
+    <div id="chart-breakdown"></div>
+    <div id="breakdown-table"></div>
+    <h3>并发敏感度（最多可承载并发数）</h3>
+    <div id="chart-sweep"></div>
+  </section>
+</main>
+
+<!-- 添加模型弹窗 -->
+<div id="modal-model" class="modal hidden">
+  <div class="modal-box">
+    <h3>添加模型</h3>
+    <label>HuggingFace Repo ID <input id="mf-repo" placeholder="Qwen/Qwen2.5-7B-Instruct"/></label>
+    <button id="mf-fetch">拉取解析</button>
+    <div id="mf-fields" class="hidden grid2">
+      <p class="hint" style="grid-column:1/-1">解析结果（可编辑，确认后入库）：</p>
+      <label>名称 <input id="mf-name"/></label>
+      <label>参数量(B) <input id="mf-params" type="number"/></label>
+      <label>层数 <input id="mf-layers" type="number"/></label>
+      <label>隐藏维度 <input id="mf-hidden" type="number"/></label>
+      <label>注意力头数 <input id="mf-attn" type="number"/></label>
+      <label>KV 头数 <input id="mf-kv" type="number"/></label>
+      <label>头维度 <input id="mf-headdim" type="number"/></label>
+      <label>专家数(MoE) <input id="mf-experts" type="number" value="0"/></label>
+      <label>专家参数(B) <input id="mf-expertparams" type="number" value="0"/></label>
+    </div>
+    <div id="mf-error" class="error"></div>
+    <div class="modal-actions">
+      <button id="mf-cancel">取消</button>
+      <button id="mf-save" class="primary" disabled>确认入库</button>
+    </div>
+  </div>
+</div>
+
+<!-- 添加显卡弹窗 -->
+<div id="modal-gpu" class="modal hidden">
+  <div class="modal-box">
+    <h3>添加显卡</h3>
+    <label>ID（英文） <input id="gf-id" placeholder="my-rtx-4080"/></label>
+    <label>名称 <input id="gf-name" placeholder="RTX 4080"/></label>
+    <label>显存(GB) <input id="gf-vram" type="number" placeholder="16"/></label>
+    <div id="gf-error" class="error"></div>
+    <div class="modal-actions">
+      <button id="gf-cancel">取消</button>
+      <button id="gf-save" class="primary">确认入库</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
