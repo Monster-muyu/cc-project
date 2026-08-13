@@ -33,6 +33,20 @@ def test_resolve_arch_explicit_head_dim():
     assert resolve_arch(cfg)["head_dim"] == 96
 
 
+def test_resolve_arch_nested_text_config():
+    # VL/multimodal: LLM arch nested under text_config (top level lacks it)
+    cfg = {"architectures": ["Qwen3_5ForConditionalGeneration"],
+           "text_config": {"num_hidden_layers": 28, "hidden_size": 3584,
+                           "num_attention_heads": 28, "num_key_value_heads": 4,
+                           "head_dim": 128, "vocab_size": 152064},
+           "vision_config": {"some": "stuff"}}
+    a = resolve_arch(cfg)
+    assert a["layers"] == 28
+    assert a["hidden_dim"] == 3584
+    assert a["kv_heads"] == 4
+    assert a["head_dim"] == 128
+
+
 def test_resolve_arch_moe_expert_estimate():
     # Mixtral-ish: 8 experts across 32 layers
     cfg = {"num_hidden_layers": 32, "hidden_size": 4096, "num_attention_heads": 32,

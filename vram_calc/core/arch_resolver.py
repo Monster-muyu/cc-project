@@ -9,9 +9,19 @@ from __future__ import annotations
 
 
 def resolve_arch(config: dict) -> dict:
+    # multimodal/VL models (Qwen-VL, LLaVA, ...) nest the LLM config under text_config.
+    # ponytail: vision encoder weight is ignored -- small VRAM under-estimate for VL models.
+    target = config
+    if not (config.get("num_hidden_layers") or config.get("num_layers") or config.get("n_layer")):
+        for nested_key in ("text_config", "language_config", "language_model_config"):
+            nested = config.get(nested_key)
+            if isinstance(nested, dict):
+                target = nested
+                break
+
     def first(*keys, default=None):
         for k in keys:
-            v = config.get(k)
+            v = target.get(k)
             if v is not None:
                 return v
         return default
