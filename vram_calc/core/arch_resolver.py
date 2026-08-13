@@ -34,8 +34,8 @@ def resolve_arch(config: dict) -> dict:
     head_dim = first("head_dim")
     if not head_dim and hidden and attn:
         head_dim = hidden // attn
-    num_experts = first("num_local_experts", "num_experts", default=0) or 0
-    intermediate = first("intermediate_size", default=0) or 0
+    num_experts = first("num_local_experts", "num_experts", "n_routed_experts", default=0) or 0
+    intermediate = first("moe_intermediate_size", "intermediate_size", default=0) or 0
 
     expert_params_b = 0.0
     if num_experts and intermediate and hidden and layers:
