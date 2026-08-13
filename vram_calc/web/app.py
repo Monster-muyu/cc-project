@@ -15,7 +15,7 @@ from ..core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate
 from ..core.engines import ENGINES
 from ..core.quant import QUANT_BYTES
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
-                     save_model, save_gpu, fetch_model_preview)
+                     save_model, save_gpu, fetch_model_preview, fetch_and_save_many)
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -68,7 +68,7 @@ async def index(request: Request):
 @app.get("/api/models")
 def api_models():
     return [{"id": m.id, "name": m.name, "is_moe": bool(m.num_experts),
-             "params_b": m.params_b} for m in list_models()]
+             "params_b": m.params_b, "category": m.category} for m in list_models()]
 
 
 @app.get("/api/gpus")
@@ -116,15 +116,16 @@ def api_sweep(req: CalcReq,
 
 
 @app.get("/api/models/preview")
-def api_model_preview(repo_id: str):
+def api_model_preview(repo_id: str, category: str = "llm"):
     try:
-        m = fetch_model_preview(repo_id)
+        m = fetch_model_preview(repo_id, category=category)
     except Exception as e:
         return JSONResponse({"error": f"拉取失败: {e}"}, status_code=400)
     return {"id": m.id, "name": m.name, "params_b": m.params_b, "layers": m.layers,
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
             "head_dim": m.head_dim, "vocab_size": m.vocab_size,
-            "num_experts": m.num_experts, "expert_params_b": m.expert_params_b}
+            "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
+            "category": m.category}
 
 
 @app.post("/api/models")
@@ -145,6 +146,15 @@ def api_save_gpu(spec: dict):
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     return {"ok": True, "id": g.id}
+
+
+@app.post("/api/models/bulk")
+def api_bulk_models(payload: dict):
+    """Bulk add: {"repo_ids": [..] | "id1\nid2", "category": "llm"}."""
+    repo_ids = payload.get("repo_ids", [])
+    if isinstance(repo_ids, str):
+        repo_ids = repo_ids.splitlines()
+    return fetch_and_save_many(repo_ids, category=payload.get("category", "llm"))
 
 
 if __name__ == "__main__":

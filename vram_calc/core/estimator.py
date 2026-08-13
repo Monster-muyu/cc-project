@@ -40,6 +40,7 @@ class ModelSpec:
     num_experts: int = 0         # MoE only; 0 == dense
     expert_params_b: float = 0.0 # MoE: params living in experts (billions)
     quantizations: tuple[str, ...] = ()
+    category: str = "llm"        # llm | embedding | multimodal | vision
 
 
 @dataclass(frozen=True)

@@ -105,6 +105,7 @@ def _dict_to_model(e: dict) -> ModelSpec:
         vocab_size=e.get("vocab_size", 0), num_experts=e.get("num_experts", 0),
         expert_params_b=e.get("expert_params_b", 0.0),
         quantizations=tuple(e.get("quantizations", STANDARD_QUANTS)),
+        category=e.get("category", "llm"),
     )
 
 
@@ -113,7 +114,7 @@ def _model_to_dict(m: ModelSpec) -> dict:
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
             "head_dim": m.head_dim, "vocab_size": m.vocab_size,
             "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
-            "quantizations": list(STANDARD_QUANTS)}
+            "quantizations": list(STANDARD_QUANTS), "category": m.category}
 
 
 def _dict_to_gpu(e: dict) -> GpuSpec:
@@ -131,7 +132,7 @@ def _gpu_to_dict(g: GpuSpec) -> dict:
 
 
 # ---- HuggingFace fetch (needs network) ----
-def fetch_model_preview(repo_id: str) -> ModelSpec:
+def fetch_model_preview(repo_id: str, category: str = "llm") -> ModelSpec:
     """Fetch param count (safetensors) + arch (config.json) from HF.
 
     Returns a ModelSpec for the user to preview/edit before saving.
@@ -150,8 +151,24 @@ def fetch_model_preview(repo_id: str) -> ModelSpec:
 
     return ModelSpec(
         id=repo_id, name=repo_id.split("/")[-1],
-        params_b=round(params_b, 3), quantizations=STANDARD_QUANTS, **arch,
+        params_b=round(params_b, 3), quantizations=STANDARD_QUANTS,
+        category=category, **arch,
     )
+
+
+def fetch_and_save_many(repo_ids: list[str], category: str = "llm") -> dict:
+    """Bulk: fetch + save each repo. Returns {"saved": [...], "failed": [...]}."""
+    saved, failed = [], []
+    for rid in repo_ids:
+        rid = rid.strip()
+        if not rid:
+            continue
+        try:
+            save_model(fetch_model_preview(rid, category=category))
+            saved.append(rid)
+        except Exception as e:   # one bad repo must not abort the batch
+            failed.append({"id": rid, "error": f"{type(e).__name__}: {e}"})
+    return {"saved": saved, "failed": failed}
 
 
 def _params_from_info(info) -> float | None:
