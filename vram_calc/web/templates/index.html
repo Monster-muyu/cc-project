@@ -8,16 +8,23 @@
 </head>
 <body>
 <header>
-  <h1>显存计算工具</h1>
-  <div class="actions">
-    <button id="btn-add-model">＋ 添加模型</button>
-    <button id="btn-add-gpu">＋ 添加显卡</button>
+  <div class="head-inner">
+    <div class="brand">
+      <h1>显存计算工具</h1>
+      <span class="sub">估算部署 LLM 所需显存</span>
+    </div>
+    <div class="actions">
+      <button id="btn-add-model">＋ 添加模型</button>
+      <button id="btn-bulk-model">批量导入</button>
+      <button id="btn-add-gpu">＋ 添加显卡</button>
+    </div>
   </div>
 </header>
 
 <main>
-  <section class="panel-left">
+  <section class="card panel-left">
     <h2>选择参数</h2>
+    <div class="cat-filter" id="cat-filter"></div>
     <label>模型 <select id="model"></select></label>
     <label>量化 <select id="quant">
       {% for q in quants %}<option value="{{ q }}">{{ q }}</option>{% endfor %}
@@ -45,7 +52,7 @@
     </label>
   </section>
 
-  <section class="panel-right">
+  <section class="card panel-right">
     <div id="verdict" class="verdict">加载中…</div>
     <h3>显存占用 vs 容量</h3>
     <div id="chart-capacity"></div>
@@ -57,11 +64,20 @@
   </section>
 </main>
 
-<!-- 添加模型弹窗 -->
+<footer>
+  数据：模型参数量来自 HuggingFace <code>safetensors</code> 元数据（零权重下载）· 估算含启发式成分，以实测为准 ·
+  <a href="http://192.168.243.204/root/vram-calc" target="_blank">GitLab 仓库</a>
+</footer>
+
+<!-- 添加模型（单个） -->
 <div id="modal-model" class="modal hidden">
   <div class="modal-box">
     <h3>添加模型</h3>
     <label>HuggingFace Repo ID <input id="mf-repo" placeholder="Qwen/Qwen2.5-7B-Instruct"/></label>
+    <label>分类 <select id="mf-cat">
+      <option value="llm">LLM</option><option value="embedding">向量</option>
+      <option value="multimodal">多模态</option><option value="vision">视觉</option>
+    </select></label>
     <button id="mf-fetch">拉取解析</button>
     <div id="mf-fields" class="hidden grid2">
       <p class="hint" style="grid-column:1/-1">解析结果（可编辑，确认后入库）：</p>
@@ -83,7 +99,25 @@
   </div>
 </div>
 
-<!-- 添加显卡弹窗 -->
+<!-- 批量导入 -->
+<div id="modal-bulk" class="modal hidden">
+  <div class="modal-box">
+    <h3>批量导入模型</h3>
+    <p class="hint">每行一个 HuggingFace Repo ID，自动拉取精确参数后入库：</p>
+    <textarea id="bf-list" placeholder="Qwen/Qwen2.5-7B-Instruct&#10;deepseek-ai/DeepSeek-V3&#10;BAAI/bge-m3"></textarea>
+    <label>分类 <select id="bf-cat">
+      <option value="llm">LLM</option><option value="embedding">向量</option>
+      <option value="multimodal">多模态</option><option value="vision">视觉</option>
+    </select></label>
+    <div id="bf-result" class="error"></div>
+    <div class="modal-actions">
+      <button id="bf-cancel">取消</button>
+      <button id="bf-go" class="primary">批量导入</button>
+    </div>
+  </div>
+</div>
+
+<!-- 添加显卡 -->
 <div id="modal-gpu" class="modal hidden">
   <div class="modal-box">
     <h3>添加显卡</h3>
