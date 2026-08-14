@@ -48,7 +48,6 @@ async function init() {
   await loadDropdowns();
   for (const id of ["tp", "pp"]) PARALLEL.forEach((n) => $(id).add(new Option(n, n)));
   EP_VALS.forEach((n) => $("ep").add(new Option(n, n)));
-  PARALLEL.forEach((n) => $("gpu_count").add(new Option(n, n)));
   bindEvents();
   onContextInput();
   onModelChange();
@@ -134,7 +133,7 @@ async function recalc() {
   if (r.error) { $("verdict").textContent = r.error; return; }
   renderResult(r);
   const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1&x1=16", opt).then((r) => r.json());
-  if (!s.error) $("chart-sweep").innerHTML = sweepChart(s);
+  if (!s.error) $("chart-sweep").innerHTML = sweepChart(s, "并发数");
 }
 
 function renderResult(r) {
@@ -229,7 +228,7 @@ function breakdownTable(bd, total) {
   return `<table><tbody>${rows}<tr class="tot"><td>合计(固定)</td><td>${total}</td><td>100%</td></tr></tbody></table>`;
 }
 
-function sweepChart(s) {
+function sweepChart(s, sweepLabel = "并发数") {
   const pts = s.points;
   if (!pts.length) return "<p class='hint'>无数据</p>";
   const W = 360, H = 205, pl = 46, pb = 30, pr = 10, pt = 12;
@@ -268,15 +267,15 @@ function sweepChart(s) {
     <text x="${W - pr}" y="${capY - 4}" font-size="9.5" fill="${C.crit}" text-anchor="end">容量 ${s.capacity_gb}GB</text>
     <line x1="${pl}" y1="${useY}" x2="${W - pr}" y2="${useY}" stroke="${C.warn}" stroke-dasharray="3,2"/>
     <text x="${pl + 2}" y="${useY - 4}" font-size="9.5" fill="${C.warn}" text-anchor="start">可用 ${s.usable_gb}GB</text>
-    <path d="${line}" fill="none" stroke="${C.line}" stroke-width="2"/>
+    <path d="${line}" fill="none" stroke="${C.kv}" stroke-width="2"/>
     ${mark}
-    <text x="${pl - 34}" y="${pt}" font-size="10" fill="#52514e">GB</text>
-    <text x="${W - pr}" y="${H - 1}" font-size="10" fill="#52514e" text-anchor="end">并发数 →</text>
+    <text x="4" y="${pt + 4}" font-size="10" fill="#52514e">GB</text>
+    <text x="${W - pr}" y="${H - 1}" font-size="10" fill="#52514e" text-anchor="end">${sweepLabel} →</text>
   </svg>
   <div class="legend">
-    <span class="leg" style="--c:${C.line}">总占用(随并发↑)</span>
-    <span class="leg" style="--c:${C.warn}">可用(利用率×容量)</span>
-    <span class="leg" style="--c:${C.crit}">显存容量</span>
+    <span class="leg" style="--c:${C.kv}">KV需求(上下文×并发)</span>
+    <span class="leg" style="--c:${C.warn}">KV预算(撞线=满载)</span>
+    <span class="leg" style="--c:${C.crit}">预算上限</span>
   </div>`;
 }
 

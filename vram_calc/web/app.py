@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from ..core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate
 from ..core.engines import ENGINES
-from ..core.quant import QUANT_BYTES
+from ..core.quant import QUANT_BYTES, bytes_per_kv
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
                      save_model, save_gpu, fetch_model_preview, fetch_and_save_many,
                      fetch_modelscope, infer_quant_from_id)
@@ -112,17 +112,21 @@ def api_sweep(req: CalcReq,
     except ValueError as e:
         return JSONResponse({"error": str(e)}, status_code=400)
     n = base.num_gpus
+    m = get_model(req.model_id)
+    # bytes per KV token (full model) -- sweep plots KV DEMAND vs KV BUDGET,
+    # not resident VRAM (resident is context-independent in the pool model)
+    kvb = bytes_per_kv(req.kv_quant)
+    bpt = 2 * m.layers * m.kv_heads * m.head_dim * kvb if m else 0
     points = []
     for x in range(max(x0, 1), x1 + 1):
-        try:
-            r = _estimate(req.model_copy(update={sweep_var: x}))
-            points.append({"x": x, "total_gb": round(r.breakdown.total * n, 2)})
-        except Exception:
-            break
-    usable = round(base.usable_gb * n, 2)
-    max_x = max((p["x"] for p in points if p["total_gb"] <= usable), default=None)
-    return {"points": points, "capacity_gb": round(base.capacity_gb * n, 2),
-            "usable_gb": usable, "max_x": max_x}
+        ctx = x if sweep_var == "context_len" else req.context_len
+        conc = x if sweep_var == "concurrency" else req.concurrency
+        kv_demand = bpt * ctx * conc / 1e9
+        points.append({"x": x, "total_gb": round(kv_demand, 2)})
+    budget = base.kv_budget_gb
+    max_x = max((p["x"] for p in points if p["total_gb"] <= budget), default=None)
+    return {"points": points, "capacity_gb": round(budget, 2),
+            "usable_gb": round(budget * 0.98, 2), "max_x": max_x, "kv_budget_gb": budget}
 
 
 @app.get("/api/models/preview")
