@@ -56,15 +56,15 @@ def test_weights_scale_with_quant():
 
 # ---- KV cache ----
 def test_kv_pool_dynamic():
-    # KV is a startup pool filling gpu_memory_utilization; NOT in resident breakdown
+    # pool capacity is computed and context-INDEPENDENT (vLLM fills util at startup)
     r = estimate(_inp(LLAMA3_8B))
-    assert r.breakdown.kv_cache == 0.0
-    assert r.max_kv_tokens > 10000               # pool capacity computed
-    # max_model_len does NOT change resident memory or pool size (vLLM fills util)
+    assert r.max_kv_tokens > 10000
     r200 = estimate(_inp(LLAMA3_8B, context_len=200000))
-    assert r200.breakdown.total == pytest.approx(r.breakdown.total, rel=1e-6)
     assert r200.max_kv_tokens == r.max_kv_tokens
-    # and a 200k load on a pool of ~24k is "tight" (preemption), NOT "over" (OOM)
+    # but the displayed KV (requested load) grows with context -> total responds
+    assert r200.breakdown.kv_cache > r.breakdown.kv_cache
+    assert r200.breakdown.total > r.breakdown.total
+    # a 200k load over a ~24k pool is "tight" (preemption), NOT "over" (OOM)
     assert r200.verdict == "tight"
 
 

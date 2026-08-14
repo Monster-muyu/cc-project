@@ -144,8 +144,11 @@ function renderResult(r) {
   const perGpu = r.num_gpus > 1 ? `（每卡 ${r.per_gpu_gb} GB）` : "";
   const v = $("verdict");
   v.className = "verdict " + r.verdict;
-  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 固定占用 <b>${r.total_gb} GB</b>${perGpu} ` +
-    `/ 可用 ${r.usable_gb} GB（${hd >= 0 ? "余 " + hd + " GB 给 KV 池" : "差 " + (-hd).toFixed(2) + " GB,加载即 OOM"}）` +
+  const hdTxt = r.verdict === "over"
+    ? `差 ${(-hd).toFixed(2)} GB,加载即 OOM`
+    : (hd >= 0 ? `余 ${hd} GB` : `KV 需求超池子 ${(-hd).toFixed(1)} GB → 会限流`);
+  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b>${perGpu} ` +
+    `/ 可用 ${r.usable_gb} GB（${hdTxt}）` +
     (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "");
   $("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
@@ -249,7 +252,7 @@ function sweepChart(s) {
     <line x1="${pl}" y1="${useY}" x2="${W - pr}" y2="${useY}" stroke="${C.warn}" stroke-dasharray="3,2"/>
     <path d="${line}" fill="none" stroke="${C.line}" stroke-width="2"/>
     ${mark}
-    <text x="${pl}" y="${H - 6}" font-size="9.5" fill="#898781">并发数 →</text>
+    <text x="${pl}" y="${H - 6}" font-size="11" fill="#52514e">并发数 →</text>
   </svg>`;
 }
 

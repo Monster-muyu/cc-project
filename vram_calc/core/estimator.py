@@ -122,9 +122,14 @@ def estimate(inp: EstimateInput) -> Estimate:
     expert_w = m.expert_params_b * bpp / (ep_eff * inp.pp)
     weights = (dense_w + expert_w) * gpu_frac
 
-    # NOTE: KV is NOT part of the resident breakdown. vLLM allocates a paged KV
-    # pool at startup sized to FILL gpu_memory_utilization, independent of
-    # max_model_len / concurrency. See max_kv_tokens for the pool capacity.
+    # --- KV cache (GB) for the REQUESTED load (context*concurrency) ---
+    # vLLM does NOT pre-allocate this (pool fills gpu_memory_utilization at startup,
+    # independent of max_model_len); it is shown so the total responds to inputs.
+    # The pool's real capacity is max_kv_tokens, computed below.
+    kv_heads_per_gpu = m.kv_heads / inp.tp
+    layers_per_gpu = m.layers / inp.pp
+    kv = (2 * layers_per_gpu * inp.context_len * kv_heads_per_gpu
+          * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
 
     # --- transient prefill activation (GB) ---
     # bounded by max_num_batched_tokens (vLLM chunked-prefill batch), NOT context*concurrency.
@@ -136,7 +141,7 @@ def estimate(inp: EstimateInput) -> Estimate:
     eng = get_engine(inp.engine)
     overhead = eng.baseline_gb + (dense_w + expert_w) * gpu_frac * eng.weight_ratio
 
-    bd = Breakdown(weights=weights, kv_cache=0.0,
+    bd = Breakdown(weights=weights, kv_cache=kv,
                    activation=activation, overhead=overhead)
 
     capacity = inp.gpu.vram_gb
