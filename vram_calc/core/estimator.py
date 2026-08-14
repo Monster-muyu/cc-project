@@ -122,12 +122,9 @@ def estimate(inp: EstimateInput) -> Estimate:
     expert_w = m.expert_params_b * bpp / (ep_eff * inp.pp)
     weights = (dense_w + expert_w) * gpu_frac
 
-    # --- KV cache (GB) --- scales with ACTUAL operating context*concurrency.
-    # Enter realistic per-request context, not the model's max window.
-    kv_heads_per_gpu = m.kv_heads / inp.tp
-    layers_per_gpu = m.layers / inp.pp
-    kv = (2 * layers_per_gpu * inp.context_len * kv_heads_per_gpu
-          * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
+    # NOTE: KV is NOT part of the resident breakdown. vLLM allocates a paged KV
+    # pool at startup sized to FILL gpu_memory_utilization, independent of
+    # max_model_len / concurrency. See max_kv_tokens for the pool capacity.
 
     # --- transient prefill activation (GB) ---
     # bounded by max_num_batched_tokens (vLLM chunked-prefill batch), NOT context*concurrency.
@@ -139,7 +136,7 @@ def estimate(inp: EstimateInput) -> Estimate:
     eng = get_engine(inp.engine)
     overhead = eng.baseline_gb + (dense_w + expert_w) * gpu_frac * eng.weight_ratio
 
-    bd = Breakdown(weights=weights, kv_cache=kv,
+    bd = Breakdown(weights=weights, kv_cache=0.0,
                    activation=activation, overhead=overhead)
 
     capacity = inp.gpu.vram_gb
@@ -155,8 +152,17 @@ def estimate(inp: EstimateInput) -> Estimate:
     kv_pool_gb = kv_budget_pg * (inp.tp * inp.pp)
     max_kv_tokens = int(kv_pool_gb * GB / bpt) if bpt else 0
 
-    # verdict: does the resident cost (incl the requested KV) fit? context-responsive.
-    verdict = _verdict(headroom, usable)
+    # vLLM verdict semantics:
+    #   over  = OOM: weights+overhead+activation alone exceed usable (model won't LOAD)
+    #   ok    = loads AND the requested load (ctx*concurrency) fits the KV pool
+    #   tight = loads BUT load exceeds the KV pool -> preemption/swap (slower), NOT OOM
+    req_tokens = inp.context_len * max(inp.concurrency, 1)
+    if non_kv > usable:
+        verdict = "over"
+    elif bpt == 0 or req_tokens <= max_kv_tokens:
+        verdict = "ok"
+    else:
+        verdict = "tight"
 
     return Estimate(breakdown=bd, capacity_gb=capacity, usable_gb=usable,
                     headroom_gb=headroom, verdict=verdict,

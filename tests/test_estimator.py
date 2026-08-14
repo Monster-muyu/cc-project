@@ -55,13 +55,17 @@ def test_weights_scale_with_quant():
 
 
 # ---- KV cache ----
-def test_kv_cache_value():
-    # KV scales with context: 2*32*4096*8*128*2 bytes ~= 0.537 GB at ctx=4096
+def test_kv_pool_dynamic():
+    # KV is a startup pool filling gpu_memory_utilization; NOT in resident breakdown
     r = estimate(_inp(LLAMA3_8B))
-    assert r.breakdown.kv_cache == pytest.approx(0.537, rel=0.01)
-    # and it grows with context (the whole point of a VRAM calculator)
-    r32 = estimate(_inp(LLAMA3_8B, context_len=32768))
-    assert r32.breakdown.kv_cache == pytest.approx(r.breakdown.kv_cache * 8, rel=1e-6)
+    assert r.breakdown.kv_cache == 0.0
+    assert r.max_kv_tokens > 10000               # pool capacity computed
+    # max_model_len does NOT change resident memory or pool size (vLLM fills util)
+    r200 = estimate(_inp(LLAMA3_8B, context_len=200000))
+    assert r200.breakdown.total == pytest.approx(r.breakdown.total, rel=1e-6)
+    assert r200.max_kv_tokens == r.max_kv_tokens
+    # and a 200k load on a pool of ~24k is "tight" (preemption), NOT "over" (OOM)
+    assert r200.verdict == "tight"
 
 
 def test_gqa_vs_mha_kv_capacity():
