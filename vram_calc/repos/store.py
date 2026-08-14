@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from ..core.estimator import ModelSpec, GpuSpec
-from ..core.arch_resolver import resolve_arch
+from ..core.arch_resolver import resolve_arch, detect_quant
 
 PKG_DIR = Path(__file__).resolve().parent.parent          # .../vram_calc/
 BUNDLED_DIR = PKG_DIR / "data"
@@ -106,6 +106,7 @@ def _dict_to_model(e: dict) -> ModelSpec:
         expert_params_b=e.get("expert_params_b", 0.0),
         quantizations=tuple(e.get("quantizations", STANDARD_QUANTS)),
         category=e.get("category", "llm"),
+        quant=e.get("quant", ""),
     )
 
 
@@ -114,7 +115,7 @@ def _model_to_dict(m: ModelSpec) -> dict:
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
             "head_dim": m.head_dim, "vocab_size": m.vocab_size,
             "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
-            "quantizations": list(STANDARD_QUANTS), "category": m.category}
+            "quantizations": list(STANDARD_QUANTS), "category": m.category, "quant": m.quant}
 
 
 def _dict_to_gpu(e: dict) -> GpuSpec:
@@ -152,7 +153,7 @@ def fetch_model_preview(repo_id: str, category: str = "llm") -> ModelSpec:
     return ModelSpec(
         id=repo_id, name=repo_id.split("/")[-1],
         params_b=round(params_b, 3), quantizations=STANDARD_QUANTS,
-        category=category, **arch,
+        category=category, quant=detect_quant(config), **arch,
     )
 
 

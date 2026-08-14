@@ -68,7 +68,7 @@ async def index(request: Request):
 @app.get("/api/models")
 def api_models():
     return [{"id": m.id, "name": m.name, "is_moe": bool(m.num_experts),
-             "params_b": m.params_b, "category": m.category} for m in list_models()]
+             "params_b": m.params_b, "category": m.category, "quant": m.quant} for m in list_models()]
 
 
 @app.get("/api/gpus")
@@ -94,6 +94,8 @@ def api_calc(req: CalcReq):
         "headroom_gb": round(r.headroom_gb * n, 2),
         "breakdown": {k: round(v * n, 2) for k, v in b.as_dict().items()},
         "num_gpus": n,
+        "max_kv_tokens": r.max_kv_tokens,
+        "kv_budget_gb": round(r.kv_budget_gb, 2),
     }
 
 
@@ -129,7 +131,7 @@ def api_model_preview(repo_id: str, category: str = "llm"):
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
             "head_dim": m.head_dim, "vocab_size": m.vocab_size,
             "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
-            "category": m.category}
+            "category": m.category, "quant": m.quant}
 
 
 @app.post("/api/models")

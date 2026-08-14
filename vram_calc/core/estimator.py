@@ -41,6 +41,7 @@ class ModelSpec:
     expert_params_b: float = 0.0 # MoE: params living in experts (billions)
     quantizations: tuple[str, ...] = ()
     category: str = "llm"        # llm | embedding | multimodal | vision
+    quant: str = ""              # fixed quant for pre-quantized repos (awq/gptq/gguf); "" = free choice
 
 
 @dataclass(frozen=True)
@@ -95,6 +96,8 @@ class Estimate:
     headroom_gb: float         # usable - total (negative == over capacity)
     verdict: str               # "ok" | "tight" | "over"
     num_gpus: int              # GPUs holding one model replica (tp*pp*ep_eff)
+    kv_budget_gb: float = 0.0  # VRAM left for KV after fixed weights+overhead (pooled tp*pp)
+    max_kv_tokens: int = 0     # max KV tokens vLLM-style dynamic allocation can hold
 
 
 def _verdict(headroom: float, usable: float) -> str:
@@ -141,9 +144,30 @@ def estimate(inp: EstimateInput) -> Estimate:
     usable = capacity * inp.safety_factor
     headroom = usable - bd.total
     num_gpus = inp.tp * inp.pp * ep_eff
+
+    # vLLM-style KV budget: VRAM left after FIXED weights+overhead (per GPU),
+    # pooled over the TP*PP cards that hold attention/KV (EP cards hold experts, not KV).
+    bpt = 2 * m.layers * m.kv_heads * m.head_dim * kvb   # bytes per KV token, full model
+    kv_budget_pg = max(usable - (weights + overhead), 0.0)
+    kv_pool_gb = kv_budget_pg * (inp.tp * inp.pp)
+    max_kv_tokens = int(kv_pool_gb * GB / bpt) if bpt else 0
+
+    # deployability verdict (vLLM dynamic allocation, NOT static full-resident KV):
+    #   over  = weights+overhead alone don't fit
+    #   ok    = weights fit AND requested ctx*concurrency fits the KV budget
+    #   tight = weights fit but KV budget can't hold the requested ctx*concurrency at once
+    req_tokens = inp.context_len * max(inp.concurrency, 1)
+    if (weights + overhead) > usable:
+        verdict = "over"
+    elif bpt == 0 or req_tokens <= max_kv_tokens:
+        verdict = "ok"
+    else:
+        verdict = "tight"
+
     return Estimate(breakdown=bd, capacity_gb=capacity, usable_gb=usable,
-                    headroom_gb=headroom, verdict=_verdict(headroom, usable),
-                    num_gpus=num_gpus)
+                    headroom_gb=headroom, verdict=verdict,
+                    num_gpus=num_gpus, kv_budget_gb=round(kv_pool_gb, 2),
+                    max_kv_tokens=max_kv_tokens)
 
 
 if __name__ == "__main__":

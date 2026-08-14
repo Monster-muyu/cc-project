@@ -93,6 +93,10 @@ function filterModels() {
 
 function onModelChange() {
   applyParallelStrategy();
+  const m = ALL_MODELS.find((x) => x.id === $("model").value);
+  const q = $("quant");
+  if (m && m.quant) { q.value = m.quant; q.disabled = true; }   // pre-quantized repo -> lock
+  else { q.disabled = false; }
 }
 
 function currentInput() {
@@ -101,6 +105,7 @@ function currentInput() {
     context_len: parseContext($("context_len").value) || 4096, concurrency: +$("concurrency").value || 1,
     engine: $("engine").value, tp: +$("tp").value || 1, pp: +$("pp").value || 1,
     ep: +$("ep").value || 1, kv_quant: $("kv_quant").value, cpu_offload: +$("cpu_offload").value,
+    safety_factor: +$("gpu_util").value,
   };
 }
 
@@ -108,9 +113,10 @@ let timer;
 function bindEvents() {
   const debounced = () => { clearTimeout(timer); timer = setTimeout(recalc, 300); };
   ["quant", "gpu", "engine", "tp", "pp", "ep", "kv_quant",
-   "context_len", "concurrency", "cpu_offload", "model", "gpu_count"].forEach((id) =>
+   "context_len", "concurrency", "cpu_offload", "gpu_util", "model", "gpu_count"].forEach((id) =>
     $(id).addEventListener("input", () => {
       if (id === "cpu_offload") $("offload-val").textContent = Math.round(+$("cpu_offload").value * 100) + "%";
+      if (id === "gpu_util") $("util-val").textContent = Math.round(+$("gpu_util").value * 100) + "%";
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
       debounced();
@@ -143,6 +149,20 @@ function renderResult(r) {
   $("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
   $("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);
+
+  // vLLM dynamic KV capacity
+  const kb = $("kv-capacity");
+  if (r.max_kv_tokens > 0) {
+    const ctx = parseContext($("context_len").value) || 0;
+    const req = ctx * (+$("concurrency").value || 1);
+    const fmt = (n) => n.toLocaleString();
+    const fits = req <= r.max_kv_tokens;
+    kb.className = "kv-box";
+    kb.innerHTML = `💾 vLLM 动态 KV:权重+开销后剩 <b>${r.kv_budget_gb} GB</b> 给 KV,` +
+      `最多可装约 <b>${fmt(r.max_kv_tokens)}</b> token 位。` +
+      `你请求 ${fmt(req)} token(上下文×并发)→ ` +
+      (fits ? "✓ 在预算内" : `⚠ 超出,实际并发/上下文受限于 ${fmt(r.max_kv_tokens)}`);
+  } else { kb.className = "kv-box empty"; }
 }
 
 // ---- SVG charts ----

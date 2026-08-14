@@ -35,6 +35,7 @@
     <label>上下文长度 <span id="ctx-val" class="hint"></span>
       <input id="context_len" type="text" value="4096" placeholder="4096 / 32k / 200k"/>
     </label>
+    <p class="hint">每请求活跃上下文(vLLM 按需分配 KV,不会把最大窗口一次占满)</p>
     <label>并发请求数 <input id="concurrency" type="number" value="1" min="1"/></label>
 
     <hr/>
@@ -54,6 +55,10 @@
     <label>KV 量化 <select id="kv_quant">
       {% for k in kv_quants %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
     </select></label>
+    <label>显存利用率 <span id="util-val">90%</span>
+      <input id="gpu_util" type="range" min="0.5" max="0.95" step="0.05" value="0.9"/>
+    </label>
+    <p class="hint">即 vLLM 的 gpu_memory_utilization;扣掉权重+开销后,剩余显存全给 KV 动态分配</p>
     <label>CPU offload <span id="offload-val">0%</span>
       <input id="cpu_offload" type="range" min="0" max="1" step="0.1" value="0"/>
     </label>
@@ -62,6 +67,7 @@
 
   <section class="card panel-right">
     <div id="verdict" class="verdict">加载中…</div>
+    <div id="kv-capacity" class="kv-box"></div>
     <h3>显存占用 vs 容量</h3>
     <div id="chart-capacity"></div>
     <h3>组成分解</h3>

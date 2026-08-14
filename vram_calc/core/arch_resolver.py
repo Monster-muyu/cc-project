@@ -48,3 +48,20 @@ def resolve_arch(config: dict) -> dict:
         "kv_heads": kv, "head_dim": head_dim, "vocab_size": vocab,
         "num_experts": num_experts, "expert_params_b": round(expert_params_b, 2),
     }
+
+
+def detect_quant(config: dict) -> str:
+    """Detect fixed quantization from a pre-quantized repo's config.
+
+    Returns "" for base (unquantized) models -> free choice of quant.
+    AWQ/GPTQ carry a quantization_config block; GGUF repos expose it in filenames
+    (handled at fetch time, not here).
+    """
+    qc = config.get("quantization_config") or {}
+    method = qc.get("quant_method", "") if isinstance(qc, dict) else ""
+    bits = qc.get("bits") if isinstance(qc, dict) else None
+    if method in ("awq", "gptq", "bitsandbytes", "eetq"):
+        if bits == 8:
+            return "int8"
+        return "int4"          # 4-bit is the overwhelmingly common case
+    return ""
