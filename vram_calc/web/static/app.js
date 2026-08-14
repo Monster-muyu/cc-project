@@ -232,28 +232,52 @@ function breakdownTable(bd, total) {
 function sweepChart(s) {
   const pts = s.points;
   if (!pts.length) return "<p class='hint'>无数据</p>";
-  const W = 360, H = 170, pl = 38, pb = 22, pr = 8, pt = 10;
+  const W = 360, H = 205, pl = 46, pb = 30, pr = 10, pt = 12;
   const xs = pts.map((p) => p.x), ys = pts.map((p) => p.total_gb);
   const xmin = Math.min(...xs), xmax = Math.max(...xs);
-  const ymax = Math.max(...ys, s.capacity_gb) * 1.1;
+  const ymax = Math.max(...ys, s.capacity_gb) * 1.08;
   const X = (x) => pl + ((x - xmin) / (xmax - xmin)) * (W - pl - pr);
   const Y = (y) => H - pb - (y / ymax) * (H - pt - pb);
   const line = pts.map((p, i) => `${i ? "L" : "M"}${X(p.x).toFixed(1)},${Y(p.total_gb).toFixed(1)}`).join(" ");
   const capY = Y(s.capacity_gb), useY = Y(s.usable_gb);
+
+  // y-axis gridlines + GB tick labels
+  let grid = "";
+  for (let i = 0; i <= 4; i++) {
+    const v = (ymax * i) / 4, y = Y(v);
+    grid += `<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W - pr}" y2="${y.toFixed(1)}" stroke="#e1e0d9"/>` +
+            `<text x="${pl - 6}" y="${(y + 3).toFixed(1)}" font-size="9.5" fill="#898781" text-anchor="end">${Math.round(v)}</text>`;
+  }
+  // x-axis ticks (concurrency values)
+  const every = pts.length > 9 ? 2 : 1;
+  let ticks = "";
+  pts.forEach((p, i) => {
+    if (i % every) return;
+    ticks += `<text x="${X(p.x).toFixed(1)}" y="${H - 12}" font-size="9.5" fill="#898781" text-anchor="middle">${p.x}</text>`;
+  });
+
   let mark = "";
   if (s.max_x) {
     const p = pts.find((p) => p.x === s.max_x);
     if (p) mark = `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.total_gb).toFixed(1)}" r="3.5" fill="${C.crit}"/>` +
-      `<text x="${X(p.x).toFixed(1)}" y="${Y(p.total_gb).toFixed(1) - 7}" font-size="10.5" fill="${C.crit}" text-anchor="middle" font-weight="700">最大 ${s.max_x}</text>`;
+      `<text x="${X(p.x).toFixed(1)}" y="${Y(p.total_gb).toFixed(1) - 8}" font-size="10.5" fill="${C.crit}" text-anchor="middle" font-weight="700">最大 ${s.max_x}</text>`;
   }
   return `<svg width="${W}" height="${H}" class="chart">
+    ${grid}${ticks}
     <line x1="${pl}" y1="${capY}" x2="${W - pr}" y2="${capY}" stroke="${C.crit}" stroke-dasharray="4,2"/>
     <text x="${W - pr}" y="${capY - 4}" font-size="9.5" fill="${C.crit}" text-anchor="end">容量 ${s.capacity_gb}GB</text>
     <line x1="${pl}" y1="${useY}" x2="${W - pr}" y2="${useY}" stroke="${C.warn}" stroke-dasharray="3,2"/>
+    <text x="${W - pr}" y="${useY - 4}" font-size="9.5" fill="${C.warn}" text-anchor="end">可用 ${s.usable_gb}GB</text>
     <path d="${line}" fill="none" stroke="${C.line}" stroke-width="2"/>
     ${mark}
-    <text x="${pl}" y="${H - 6}" font-size="11" fill="#52514e">并发数 →</text>
-  </svg>`;
+    <text x="${pl - 34}" y="${pt}" font-size="10" fill="#52514e">GB</text>
+    <text x="${W - pr}" y="${H - 1}" font-size="10" fill="#52514e" text-anchor="end">并发数 →</text>
+  </svg>
+  <div class="legend">
+    <span class="leg" style="--c:${C.line}">总占用(随并发↑)</span>
+    <span class="leg" style="--c:${C.warn}">可用(利用率×容量)</span>
+    <span class="leg" style="--c:${C.crit}">显存容量</span>
+  </div>`;
 }
 
 // ---- add model (single) ----
