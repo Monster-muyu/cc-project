@@ -1,6 +1,6 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
-const PARALLEL = [1, 2, 4, 8];
+const PARALLEL = [1, 2, 4, 8, 16, 32, 64];
 const EP_VALS = [1, 2, 4, 8, 16, 32, 64];
 // palette (dataviz skill reference)
 const C = { w: "#2a78d6", kv: "#eb6834", act: "#1baf7a", oh: "#e87ba4",
@@ -48,7 +48,7 @@ async function init() {
   await loadDropdowns();
   for (const id of ["tp", "pp"]) PARALLEL.forEach((n) => $(id).add(new Option(n, n)));
   EP_VALS.forEach((n) => $("ep").add(new Option(n, n)));
-  [1, 2, 4, 8].forEach((n) => $("gpu_count").add(new Option(n, n)));
+  PARALLEL.forEach((n) => $("gpu_count").add(new Option(n, n)));
   bindEvents();
   onContextInput();
   onModelChange();
