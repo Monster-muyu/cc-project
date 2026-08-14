@@ -55,12 +55,13 @@ def test_weights_scale_with_quant():
 
 
 # ---- KV cache ----
-def test_kv_dynamic_not_in_breakdown():
-    # KV is allocated dynamically out of the budget; breakdown = fixed cost only
+def test_kv_cache_value():
+    # KV scales with context: 2*32*4096*8*128*2 bytes ~= 0.537 GB at ctx=4096
     r = estimate(_inp(LLAMA3_8B))
-    assert r.breakdown.kv_cache == 0.0
-    assert r.breakdown.weights == pytest.approx(8.03 * 2, rel=1e-6)
-    assert r.max_kv_tokens > 10000           # dynamic KV capacity is positive
+    assert r.breakdown.kv_cache == pytest.approx(0.537, rel=0.01)
+    # and it grows with context (the whole point of a VRAM calculator)
+    r32 = estimate(_inp(LLAMA3_8B, context_len=32768))
+    assert r32.breakdown.kv_cache == pytest.approx(r.breakdown.kv_cache * 8, rel=1e-6)
 
 
 def test_gqa_vs_mha_kv_capacity():

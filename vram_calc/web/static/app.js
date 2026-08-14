@@ -144,8 +144,8 @@ function renderResult(r) {
   const perGpu = r.num_gpus > 1 ? `（每卡 ${r.per_gpu_gb} GB）` : "";
   const v = $("verdict");
   v.className = "verdict " + r.verdict;
-  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 固定占用 <b>${r.total_gb} GB</b>${perGpu} ` +
-    `/ 可用 ${r.usable_gb} GB（${hd >= 0 ? "余 " + hd + " GB 给 KV" : "差 " + (-hd).toFixed(2) + " GB(连权重都放不下)"})` +
+  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b>${perGpu} ` +
+    `/ 可用 ${r.usable_gb} GB（${hd >= 0 ? "余 " + hd + " GB" : "差 " + (-hd).toFixed(2) + " GB"}）` +
     (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "");
   $("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
@@ -169,13 +169,13 @@ function renderResult(r) {
     // recommendations driven by the user's inputs
     const keepConcCtx = Math.floor(B / uConc);
     const keepCtxConc = uCtx > 0 ? Math.floor(B / uCtx) : null;
-    const balC = Math.max(1, Math.min(128, Math.floor(B / 16384)));   // ~16k context sweet spot
-    const balK = Math.floor(B / balC);
+    const recC = Math.max(1, Math.floor(B / 32768));   // 32k: common actual serving context
+    const recK = Math.floor(B / recC);
     const reqNow = uCtx * uConc;
     let rec = `<div class="rec">▸ 保你的并发 <b>${uConc} 路</b> → 每路最大 <b>${fctx(keepConcCtx)}</b> 上下文</div>`;
     if (keepCtxConc !== null)
       rec += `<div class="rec">▸ 保你的上下文 <b>${fctx(uCtx)}</b> → 最多 <b>${keepCtxConc < 1 ? "不足 1 路" : keepCtxConc + " 路"}</b> 并发</div>`;
-    rec += `<div class="rec">▸ 折中 → <b>${balC} 路 × ${fctx(balK)}</b> 上下文(接近满预算)</div>`;
+    rec += `<div class="rec">▸ 推荐(32k 上下文,并发拉满)→ <b>${recC} 路 × ${fctx(recK)}</b></div>`;
     kb.className = "kv-box";
     kb.innerHTML =
       `💾 vLLM 动态 KV:扣掉权重+开销后剩 <b>${r.kv_budget_gb} GB</b> ≈ <b>${fmt(B)}</b> token 位。` +

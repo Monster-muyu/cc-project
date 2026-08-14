@@ -122,8 +122,12 @@ def estimate(inp: EstimateInput) -> Estimate:
     expert_w = m.expert_params_b * bpp / (ep_eff * inp.pp)
     weights = (dense_w + expert_w) * gpu_frac
 
-    # KV is NOT a fixed cost here -- vLLM allocates it dynamically from the
-    # remaining budget (see max_kv_tokens). Breakdown = always-resident cost only.
+    # --- KV cache (GB) --- scales with ACTUAL operating context*concurrency.
+    # Enter realistic per-request context, not the model's max window.
+    kv_heads_per_gpu = m.kv_heads / inp.tp
+    layers_per_gpu = m.layers / inp.pp
+    kv = (2 * layers_per_gpu * inp.context_len * kv_heads_per_gpu
+          * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
 
     # --- transient prefill activation (GB) ---
     # bounded by max_num_batched_tokens (vLLM chunked-prefill batch), NOT context*concurrency.
@@ -135,7 +139,7 @@ def estimate(inp: EstimateInput) -> Estimate:
     eng = get_engine(inp.engine)
     overhead = eng.baseline_gb + (dense_w + expert_w) * gpu_frac * eng.weight_ratio
 
-    bd = Breakdown(weights=weights, kv_cache=0.0,
+    bd = Breakdown(weights=weights, kv_cache=kv,
                    activation=activation, overhead=overhead)
 
     capacity = inp.gpu.vram_gb
@@ -151,17 +155,8 @@ def estimate(inp: EstimateInput) -> Estimate:
     kv_pool_gb = kv_budget_pg * (inp.tp * inp.pp)
     max_kv_tokens = int(kv_pool_gb * GB / bpt) if bpt else 0
 
-    # deployability verdict (vLLM dynamic allocation, NOT static full-resident KV):
-    #   over  = weights+overhead+activation alone don't fit
-    #   ok    = fit AND requested ctx*concurrency fits the KV budget
-    #   tight = fit but KV budget can't hold the requested ctx*concurrency at once
-    req_tokens = inp.context_len * max(inp.concurrency, 1)
-    if non_kv > usable:
-        verdict = "over"
-    elif bpt == 0 or req_tokens <= max_kv_tokens:
-        verdict = "ok"
-    else:
-        verdict = "tight"
+    # verdict: does the resident cost (incl the requested KV) fit? context-responsive.
+    verdict = _verdict(headroom, usable)
 
     return Estimate(breakdown=bd, capacity_gb=capacity, usable_gb=usable,
                     headroom_gb=headroom, verdict=verdict,
