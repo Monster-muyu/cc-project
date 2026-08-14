@@ -106,6 +106,7 @@ function currentInput() {
     engine: $("engine").value, tp: +$("tp").value || 1, pp: +$("pp").value || 1,
     ep: +$("ep").value || 1, kv_quant: $("kv_quant").value, cpu_offload: +$("cpu_offload").value,
     safety_factor: +$("gpu_util").value,
+    max_num_batched_tokens: +$("max_batch").value || 8192,
   };
 }
 
@@ -113,7 +114,7 @@ let timer;
 function bindEvents() {
   const debounced = () => { clearTimeout(timer); timer = setTimeout(recalc, 300); };
   ["quant", "gpu", "engine", "tp", "pp", "ep", "kv_quant",
-   "context_len", "concurrency", "cpu_offload", "gpu_util", "model", "gpu_count"].forEach((id) =>
+   "context_len", "concurrency", "max_batch", "cpu_offload", "gpu_util", "model", "gpu_count"].forEach((id) =>
     $(id).addEventListener("input", () => {
       if (id === "cpu_offload") $("offload-val").textContent = Math.round(+$("cpu_offload").value * 100) + "%";
       if (id === "gpu_util") $("util-val").textContent = Math.round(+$("gpu_util").value * 100) + "%";
@@ -143,35 +144,44 @@ function renderResult(r) {
   const perGpu = r.num_gpus > 1 ? `（每卡 ${r.per_gpu_gb} GB）` : "";
   const v = $("verdict");
   v.className = "verdict " + r.verdict;
-  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b>${perGpu} ` +
-    `/ 可用 ${r.usable_gb} GB（${hd >= 0 ? "余 " + hd : "差 " + (-hd).toFixed(2)} GB）` +
+  v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 固定占用 <b>${r.total_gb} GB</b>${perGpu} ` +
+    `/ 可用 ${r.usable_gb} GB（${hd >= 0 ? "余 " + hd + " GB 给 KV" : "差 " + (-hd).toFixed(2) + " GB(连权重都放不下)"})` +
     (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "");
   $("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
   $("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);
 
-  // vLLM dynamic KV capacity
+  // vLLM dynamic KV capacity: adaptive table + recommendations
   const kb = $("kv-capacity");
   if (r.max_kv_tokens > 0) {
-    const ctx = parseContext($("context_len").value) || 0;
-    const conc = +$("concurrency").value || 1;
-    const req = ctx * conc;
+    const B = r.max_kv_tokens;
+    const uCtx = parseContext($("context_len").value) || 0;
+    const uConc = +$("concurrency").value || 1;
     const fmt = (n) => n.toLocaleString();
     const fctx = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.round(n / 1000) + "k");
-    const fits = req <= r.max_kv_tokens;
-    // tradeoff: fixed KV token budget -> max context per request at each concurrency
-    const rows = [1, 2, 4, 8, 16].map((c) => {
-      const mc = Math.floor(r.max_kv_tokens / c);
-      const hi = c === conc ? ' class="hi"' : "";
-      return `<tr${hi}><td>${c} 路并发</td><td>→ ${fctx(mc)} / 请求</td></tr>`;
+    // adaptive concurrency set, always includes the user's value
+    const concs = [...new Set([1, 2, 4, 8, 16, 32, 64, 128, uConc])].sort((a, b) => a - b);
+    const rows = concs.map((c) => {
+      const k = Math.floor(B / c);
+      const hi = c === uConc ? ' class="hi"' : "";
+      return `<tr${hi}><td>${c} 路</td><td>→ ${fctx(k)} / 请求</td></tr>`;
     }).join("");
+    // recommendations driven by the user's inputs
+    const keepConcCtx = Math.floor(B / uConc);
+    const keepCtxConc = uCtx > 0 ? Math.floor(B / uCtx) : null;
+    const balC = Math.max(1, Math.min(128, Math.floor(B / 16384)));   // ~16k context sweet spot
+    const balK = Math.floor(B / balC);
+    const reqNow = uCtx * uConc;
+    let rec = `<div class="rec">▸ 保你的并发 <b>${uConc} 路</b> → 每路最大 <b>${fctx(keepConcCtx)}</b> 上下文</div>`;
+    if (keepCtxConc !== null)
+      rec += `<div class="rec">▸ 保你的上下文 <b>${fctx(uCtx)}</b> → 最多 <b>${keepCtxConc < 1 ? "不足 1 路" : keepCtxConc + " 路"}</b> 并发</div>`;
+    rec += `<div class="rec">▸ 折中 → <b>${balC} 路 × ${fctx(balK)}</b> 上下文(接近满预算)</div>`;
     kb.className = "kv-box";
     kb.innerHTML =
-      `💾 vLLM 动态 KV:权重+开销后剩 <b>${r.kv_budget_gb} GB</b> 给 KV ≈ <b>${fmt(r.max_kv_tokens)}</b> token 位。` +
-      ` <span class="hint">预算固定,并发↔上下文此消彼长:</span>` +
-      `<table class="kv-tbl"><tbody>${rows}</tbody></table>` +
-      `你请求 ${fctx(ctx)} × ${conc}路 = ${fmt(req)} token → ` +
-      (fits ? "✓ 在预算内" : `⚠ 超出,实际受限于 ${fmt(r.max_kv_tokens)} token`);
+      `💾 vLLM 动态 KV:扣掉权重+开销后剩 <b>${r.kv_budget_gb} GB</b> ≈ <b>${fmt(B)}</b> token 位。` +
+      ` <span class="hint">并发↔上下文(预算固定,此消彼长,你的并发高亮):</span>` +
+      `<table class="kv-tbl"><tbody>${rows}</tbody></table>${rec}` +
+      `<div class="rec hint">你当前 ${fctx(uCtx)}×${uConc} = ${fmt(reqNow)} → ${reqNow <= B ? "✓ 在预算内" : "⚠ 超出"}</div>`;
   } else { kb.className = "kv-box empty"; }
 }
 
@@ -208,11 +218,11 @@ function stackedBar(bd, total) {
 
 function breakdownTable(bd, total) {
   const zh = { weights: "权重", kv_cache: "KV cache", activation: "激活", overhead: "引擎开销" };
-  const rows = Object.entries(bd).map(([k, v]) => {
+  const rows = Object.entries(bd).filter(([, v]) => v > 0).map(([k, v]) => {
     const pct = total > 0 ? ((v / total) * 100).toFixed(0) : 0;
     return `<tr><td>${zh[k] || k}</td><td>${v}</td><td>${pct}%</td></tr>`;
   }).join("");
-  return `<table><tbody>${rows}<tr class="tot"><td>合计</td><td>${total}</td><td>100%</td></tr></tbody></table>`;
+  return `<table><tbody>${rows}<tr class="tot"><td>合计(固定)</td><td>${total}</td><td>100%</td></tr></tbody></table>`;
 }
 
 function sweepChart(s) {

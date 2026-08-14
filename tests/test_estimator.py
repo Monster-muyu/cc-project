@@ -55,19 +55,22 @@ def test_weights_scale_with_quant():
 
 
 # ---- KV cache ----
-def test_kv_cache_value():
-    # 2 * 32 * 4096 * 8 * 128 * 2 bytes = ~0.537 GB
+def test_kv_dynamic_not_in_breakdown():
+    # KV is allocated dynamically out of the budget; breakdown = fixed cost only
     r = estimate(_inp(LLAMA3_8B))
-    assert r.breakdown.kv_cache == pytest.approx(0.537, rel=0.01)
+    assert r.breakdown.kv_cache == 0.0
+    assert r.breakdown.weights == pytest.approx(8.03 * 2, rel=1e-6)
+    assert r.max_kv_tokens > 10000           # dynamic KV capacity is positive
 
 
-def test_gqa_vs_mha_kv():
-    # GQA: kv_heads=8 ; MHA: kv_heads=32 -> 4x the KV
+def test_gqa_vs_mha_kv_capacity():
+    # GQA kv_heads=8 vs MHA kv_heads=32: MHA uses 4x bytes/token -> ~1/4 the capacity
     mha = ModelSpec(id="m", name="m", params_b=8.0, layers=32, hidden_dim=4096,
                     attn_heads=32, kv_heads=32, head_dim=128)
-    kv_gqa = estimate(_inp(LLAMA3_8B)).breakdown.kv_cache
-    kv_mha = estimate(_inp(mha)).breakdown.kv_cache
-    assert kv_mha == pytest.approx(kv_gqa * 4, rel=1e-6)
+    gqa = estimate(_inp(LLAMA3_8B)).max_kv_tokens
+    mha_t = estimate(_inp(mha)).max_kv_tokens
+    assert mha_t < gqa                              # MHA (more kv heads) -> less KV capacity
+    assert 3.8 < gqa / mha_t < 4.2                 # 4x kv heads -> ~1/4 capacity
 
 
 # ---- tensor / pipeline parallel ----

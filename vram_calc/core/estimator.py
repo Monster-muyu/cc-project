@@ -70,6 +70,7 @@ class EstimateInput:
     cpu_offload: float = 0.0     # fraction of layers offloaded to CPU (0..1)
     safety_factor: float = 0.9
     exl2_bpw: float = 4.0
+    max_num_batched_tokens: int = 8192   # vLLM chunked-prefill batch size
 
 
 @dataclass(frozen=True)
@@ -121,23 +122,20 @@ def estimate(inp: EstimateInput) -> Estimate:
     expert_w = m.expert_params_b * bpp / (ep_eff * inp.pp)
     weights = (dense_w + expert_w) * gpu_frac
 
-    # --- KV cache (GB) ---
-    # per-layer KV split across TP (KV heads / TP), stage holds L/PP layers
-    kv_heads_per_gpu = m.kv_heads / inp.tp
-    layers_per_gpu = m.layers / inp.pp
-    # ponytail: assume tp divides kv_heads; fractional = average per GPU
-    kv = (2 * layers_per_gpu * inp.context_len * kv_heads_per_gpu
-          * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
+    # KV is NOT a fixed cost here -- vLLM allocates it dynamically from the
+    # remaining budget (see max_kv_tokens). Breakdown = always-resident cost only.
 
-    # --- activation (GB) --- scales with the share of the model on this GPU
-    activation = (inp.concurrency * inp.context_len * m.hidden_dim
-                  * bpp * ACTIVATION_COEFF) / GB * gpu_frac / (inp.tp * inp.pp)
+    # --- transient prefill activation (GB) ---
+    # bounded by max_num_batched_tokens (vLLM chunked-prefill batch), NOT context*concurrency.
+    # Activations are fp16 (2 B) regardless of weight quant (compute stays fp16).
+    activation = (inp.max_num_batched_tokens * m.hidden_dim * 2
+                  * ACTIVATION_COEFF) / GB * gpu_frac / (inp.tp * inp.pp)
 
     # --- overhead ---
     eng = get_engine(inp.engine)
     overhead = eng.baseline_gb + (dense_w + expert_w) * gpu_frac * eng.weight_ratio
 
-    bd = Breakdown(weights=weights, kv_cache=kv,
+    bd = Breakdown(weights=weights, kv_cache=0.0,
                    activation=activation, overhead=overhead)
 
     capacity = inp.gpu.vram_gb
@@ -145,19 +143,20 @@ def estimate(inp: EstimateInput) -> Estimate:
     headroom = usable - bd.total
     num_gpus = inp.tp * inp.pp * ep_eff
 
-    # vLLM-style KV budget: VRAM left after FIXED weights+overhead (per GPU),
+    # vLLM-style KV budget: VRAM left after FIXED weights+overhead+activation (per GPU),
     # pooled over the TP*PP cards that hold attention/KV (EP cards hold experts, not KV).
     bpt = 2 * m.layers * m.kv_heads * m.head_dim * kvb   # bytes per KV token, full model
-    kv_budget_pg = max(usable - (weights + overhead), 0.0)
+    non_kv = weights + overhead + activation
+    kv_budget_pg = max(usable - non_kv, 0.0)
     kv_pool_gb = kv_budget_pg * (inp.tp * inp.pp)
     max_kv_tokens = int(kv_pool_gb * GB / bpt) if bpt else 0
 
     # deployability verdict (vLLM dynamic allocation, NOT static full-resident KV):
-    #   over  = weights+overhead alone don't fit
-    #   ok    = weights fit AND requested ctx*concurrency fits the KV budget
-    #   tight = weights fit but KV budget can't hold the requested ctx*concurrency at once
+    #   over  = weights+overhead+activation alone don't fit
+    #   ok    = fit AND requested ctx*concurrency fits the KV budget
+    #   tight = fit but KV budget can't hold the requested ctx*concurrency at once
     req_tokens = inp.context_len * max(inp.concurrency, 1)
-    if (weights + overhead) > usable:
+    if non_kv > usable:
         verdict = "over"
     elif bpt == 0 or req_tokens <= max_kv_tokens:
         verdict = "ok"

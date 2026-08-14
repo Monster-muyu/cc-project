@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>VRAM 显存计算工具</title>
-  <link rel="stylesheet" href="/static/style.css?v=3"/>
+  <link rel="stylesheet" href="/static/style.css?v=4"/>
 </head>
 <body>
 <header>
@@ -37,6 +37,8 @@
     </label>
     <p class="hint">每请求活跃上下文(vLLM 按需分配 KV,不会把最大窗口一次占满)</p>
     <label>并发请求数 <input id="concurrency" type="number" value="1" min="1"/></label>
+    <label>最大批处理 <input id="max_batch" type="number" value="8192" min="512" step="512"/></label>
+    <p class="hint">vLLM max_num_batched_tokens:每步 prefill 的 token 数,影响临时激活显存</p>
 
     <hr/>
     <label>推理引擎 <select id="engine">
@@ -146,6 +148,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=3"></script>
+<script src="/static/app.js?v=4"></script>
 </body>
 </html>

@@ -41,6 +41,7 @@ class CalcReq(BaseModel):
     cpu_offload: float = 0.0
     safety_factor: float = 0.9
     exl2_bpw: float = 4.0
+    max_num_batched_tokens: int = 8192
 
 
 def _estimate(req: CalcReq):
@@ -54,7 +55,8 @@ def _estimate(req: CalcReq):
         model=m, gpu=g, quant=req.quant, context_len=req.context_len,
         concurrency=req.concurrency, engine=req.engine, tp=req.tp, pp=req.pp,
         ep=req.ep, kv_quant=req.kv_quant, cpu_offload=req.cpu_offload,
-        safety_factor=req.safety_factor, exl2_bpw=req.exl2_bpw))
+        safety_factor=req.safety_factor, exl2_bpw=req.exl2_bpw,
+        max_num_batched_tokens=req.max_num_batched_tokens))
 
 
 @app.get("/", response_class=HTMLResponse)
