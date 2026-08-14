@@ -113,6 +113,10 @@ hr { border: none; border-top: 1px solid var(--grid); margin: 14px 0; }
 }
 .kv-box b { color: #0d366b; }
 .kv-box.empty { display: none; }
+.kv-box .hint { color: #52514e; }
+.kv-box table.kv-tbl { width: auto; margin: 6px 0 8px; font-size: 12px; }
+.kv-box table.kv-tbl td { border: none; padding: 1px 14px 1px 0; color: #184f95; font-variant-numeric: tabular-nums; }
+.kv-box table.kv-tbl tr.hi td { color: #0d366b; font-weight: 800; }
 
 /* charts */
 .chart { display: block; max-width: 100%; margin: 2px 0; }

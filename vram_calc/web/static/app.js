@@ -154,14 +154,24 @@ function renderResult(r) {
   const kb = $("kv-capacity");
   if (r.max_kv_tokens > 0) {
     const ctx = parseContext($("context_len").value) || 0;
-    const req = ctx * (+$("concurrency").value || 1);
+    const conc = +$("concurrency").value || 1;
+    const req = ctx * conc;
     const fmt = (n) => n.toLocaleString();
+    const fctx = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.round(n / 1000) + "k");
     const fits = req <= r.max_kv_tokens;
+    // tradeoff: fixed KV token budget -> max context per request at each concurrency
+    const rows = [1, 2, 4, 8, 16].map((c) => {
+      const mc = Math.floor(r.max_kv_tokens / c);
+      const hi = c === conc ? ' class="hi"' : "";
+      return `<tr${hi}><td>${c} 路并发</td><td>→ ${fctx(mc)} / 请求</td></tr>`;
+    }).join("");
     kb.className = "kv-box";
-    kb.innerHTML = `💾 vLLM 动态 KV:权重+开销后剩 <b>${r.kv_budget_gb} GB</b> 给 KV,` +
-      `最多可装约 <b>${fmt(r.max_kv_tokens)}</b> token 位。` +
-      `你请求 ${fmt(req)} token(上下文×并发)→ ` +
-      (fits ? "✓ 在预算内" : `⚠ 超出,实际并发/上下文受限于 ${fmt(r.max_kv_tokens)}`);
+    kb.innerHTML =
+      `💾 vLLM 动态 KV:权重+开销后剩 <b>${r.kv_budget_gb} GB</b> 给 KV ≈ <b>${fmt(r.max_kv_tokens)}</b> token 位。` +
+      ` <span class="hint">预算固定,并发↔上下文此消彼长:</span>` +
+      `<table class="kv-tbl"><tbody>${rows}</tbody></table>` +
+      `你请求 ${fctx(ctx)} × ${conc}路 = ${fmt(req)} token → ` +
+      (fits ? "✓ 在预算内" : `⚠ 超出,实际受限于 ${fmt(r.max_kv_tokens)} token`);
   } else { kb.className = "kv-box empty"; }
 }
 
