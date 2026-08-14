@@ -104,7 +104,7 @@ class Estimate:
 def _verdict(headroom: float, usable: float) -> str:
     if headroom < 0:
         return "over"
-    if headroom < 0.10 * usable:   # < 10% headroom -> tight
+    if headroom < 0.05 * usable:   # < 5% headroom -> tight
         return "tight"
     return "ok"
 

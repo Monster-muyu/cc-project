@@ -158,7 +158,7 @@ function renderResult(r) {
     const uCtx = parseContext($("context_len").value) || 0;
     const uConc = +$("concurrency").value || 1;
     const fmt = (n) => n.toLocaleString();
-    const fctx = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.round(n / 1000) + "k");
+    const fctx = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.floor(n / 1000) + "k");
     // adaptive concurrency set, always includes the user's value
     const concs = [...new Set([1, 2, 4, 8, 16, 32, 64, 128, uConc])].sort((a, b) => a - b);
     const rows = concs.map((c) => {
@@ -169,13 +169,14 @@ function renderResult(r) {
     // recommendations driven by the user's inputs
     const keepConcCtx = Math.floor(B / uConc);
     const keepCtxConc = uCtx > 0 ? Math.floor(B / uCtx) : null;
-    const recC = Math.max(1, Math.floor(B / 32768));   // 32k: common actual serving context
-    const recK = Math.floor(B / recC);
+    const safeB = Math.floor(B * 0.80);                 // keep 20% headroom -> lands in 放得下
+    const recC = Math.max(1, Math.floor(safeB / 32768));
+    const recK = Math.floor(safeB / recC);
     const reqNow = uCtx * uConc;
-    let rec = `<div class="rec">▸ 保你的并发 <b>${uConc} 路</b> → 每路最大 <b>${fctx(keepConcCtx)}</b> 上下文</div>`;
+    let rec = `<div class="rec">▸ 保你的并发 <b>${uConc} 路</b> → 每路最大 <b>${fctx(keepConcCtx)}</b>(临界上限)</div>`;
     if (keepCtxConc !== null)
-      rec += `<div class="rec">▸ 保你的上下文 <b>${fctx(uCtx)}</b> → 最多 <b>${keepCtxConc < 1 ? "不足 1 路" : keepCtxConc + " 路"}</b> 并发</div>`;
-    rec += `<div class="rec">▸ 推荐(32k 上下文,并发拉满)→ <b>${recC} 路 × ${fctx(recK)}</b></div>`;
+      rec += `<div class="rec">▸ 保你的上下文 <b>${fctx(uCtx)}</b> → 最多 <b>${keepCtxConc < 1 ? "不足 1 路" : keepCtxConc + " 路"}</b>(临界上限)</div>`;
+    rec += `<div class="rec">▸ 推荐(保守,留余量,照着输即可)→ <b>${recC} 路 × ${fctx(recK)}</b> ✓ 放心得下</div>`;
     kb.className = "kv-box";
     kb.innerHTML =
       `💾 vLLM 动态 KV:扣掉权重+开销后剩 <b>${r.kv_budget_gb} GB</b> ≈ <b>${fmt(B)}</b> token 位。` +
