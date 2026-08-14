@@ -16,7 +16,7 @@ from ..core.engines import ENGINES
 from ..core.quant import QUANT_BYTES
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
                      save_model, save_gpu, fetch_model_preview, fetch_and_save_many,
-                     infer_quant_from_id)
+                     fetch_modelscope, infer_quant_from_id)
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -126,9 +126,10 @@ def api_sweep(req: CalcReq,
 
 
 @app.get("/api/models/preview")
-def api_model_preview(repo_id: str, category: str = "llm"):
+def api_model_preview(repo_id: str, category: str = "llm", source: str = "hf"):
     try:
-        m = fetch_model_preview(repo_id, category=category)
+        m = fetch_modelscope(repo_id, category=category) if source == "ms" \
+            else fetch_model_preview(repo_id, category=category)
     except Exception as e:
         return JSONResponse({"error": f"拉取失败: {e}"}, status_code=400)
     return {"id": m.id, "name": m.name, "params_b": m.params_b, "layers": m.layers,
@@ -160,11 +161,12 @@ def api_save_gpu(spec: dict):
 
 @app.post("/api/models/bulk")
 def api_bulk_models(payload: dict):
-    """Bulk add: {"repo_ids": [..] | "id1\nid2", "category": "llm"}."""
+    """Bulk add: {"repo_ids": [..] | "id1\nid2", "category": "llm", "source": "hf|ms"}."""
     repo_ids = payload.get("repo_ids", [])
     if isinstance(repo_ids, str):
         repo_ids = repo_ids.splitlines()
-    return fetch_and_save_many(repo_ids, category=payload.get("category", "llm"))
+    return fetch_and_save_many(repo_ids, category=payload.get("category", "llm"),
+                               source=payload.get("source", "hf"))
 
 
 if __name__ == "__main__":

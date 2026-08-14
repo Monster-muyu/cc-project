@@ -178,7 +178,7 @@ def fetch_model_preview(repo_id: str, category: str = "llm") -> ModelSpec:
     )
 
 
-def fetch_and_save_many(repo_ids: list[str], category: str = "llm") -> dict:
+def fetch_and_save_many(repo_ids: list[str], category: str = "llm", source: str = "hf") -> dict:
     """Bulk: fetch + save each repo. Returns {"saved": [...], "failed": [...]}."""
     saved, failed = [], []
     for rid in repo_ids:
@@ -186,7 +186,9 @@ def fetch_and_save_many(repo_ids: list[str], category: str = "llm") -> dict:
         if not rid:
             continue
         try:
-            save_model(fetch_model_preview(rid, category=category))
+            m = fetch_modelscope(rid, category=category) if source == "ms" \
+                else fetch_model_preview(rid, category=category)
+            save_model(m)
             saved.append(rid)
         except Exception as e:   # one bad repo must not abort the batch
             failed.append({"id": rid, "error": f"{type(e).__name__}: {e}"})
@@ -213,6 +215,31 @@ def _params_from_info(info) -> float | None:
         if total:
             return total / 1e9
     return None   # never derive from `total` bytes -- breaks on mixed/quantized dtypes
+
+
+# ---- ModelScope source (no modelscope SDK needed -- plain REST) ----
+_MS_BASE = "https://modelscope.cn/api/v1"
+
+
+def fetch_modelscope(repo_id: str, category: str = "llm") -> ModelSpec:
+    """Fetch arch from ModelScope config.json; params estimated (~3% error, editable).
+
+    ModelScope's model-info API has no per-dtype parameter breakdown (only
+    StorageSize, unreliable for quantized repos), so we estimate from arch.
+    """
+    import urllib.request
+
+    url = f"{_MS_BASE}/models/{repo_id}/repo?FilePath=config.json"
+    with urllib.request.urlopen(url, timeout=20) as resp:   # noqa: S310 (https, fixed host)
+        config = json.loads(resp.read().decode("utf-8"))
+
+    arch = resolve_arch(config)
+    params_b = _estimate_params_from_arch(arch, config)
+    return ModelSpec(
+        id=f"ms/{repo_id}", name=repo_id.split("/")[-1],
+        params_b=round(params_b, 3), quantizations=STANDARD_QUANTS,
+        category=category, quant=detect_quant(config), **arch,
+    )
 
 
 def _estimate_params_from_arch(arch: dict, config: dict) -> float:

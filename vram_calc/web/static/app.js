@@ -267,7 +267,7 @@ function sweepChart(s) {
     <line x1="${pl}" y1="${capY}" x2="${W - pr}" y2="${capY}" stroke="${C.crit}" stroke-dasharray="4,2"/>
     <text x="${W - pr}" y="${capY - 4}" font-size="9.5" fill="${C.crit}" text-anchor="end">容量 ${s.capacity_gb}GB</text>
     <line x1="${pl}" y1="${useY}" x2="${W - pr}" y2="${useY}" stroke="${C.warn}" stroke-dasharray="3,2"/>
-    <text x="${W - pr}" y="${useY - 4}" font-size="9.5" fill="${C.warn}" text-anchor="end">可用 ${s.usable_gb}GB</text>
+    <text x="${pl + 2}" y="${useY - 4}" font-size="9.5" fill="${C.warn}" text-anchor="start">可用 ${s.usable_gb}GB</text>
     <path d="${line}" fill="none" stroke="${C.line}" stroke-width="2"/>
     ${mark}
     <text x="${pl - 34}" y="${pt}" font-size="10" fill="#52514e">GB</text>
@@ -294,7 +294,7 @@ $("mf-fetch").onclick = async () => {
   const repo = $("mf-repo").value.trim();
   if (!repo) return;
   const cat = $("mf-cat").value;
-  const m = await fetch(`/api/models/preview?repo_id=${encodeURIComponent(repo)}&category=${cat}`).then((r) => r.json());
+  const m = await fetch(`/api/models/preview?repo_id=${encodeURIComponent(repo)}&category=${cat}&source=${$("mf-source").value}`).then((r) => r.json());
   if (m.error) { $("mf-error").textContent = m.error; return; }
   $("mf-name").value = m.name; $("mf-params").value = m.params_b;
   $("mf-layers").value = m.layers; $("mf-hidden").value = m.hidden_dim;
@@ -330,7 +330,7 @@ $("bf-go").onclick = async () => {
   $("bf-result").className = "hint"; $("bf-result").textContent = `正在拉取 ${ids.length} 个模型…`;
   const r = await fetch("/api/models/bulk", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo_ids: ids, category: $("bf-cat").value }),
+    body: JSON.stringify({ repo_ids: ids, category: $("bf-cat").value, source: $("bf-source").value }),
   }).then((r) => r.json());
   const fail = r.failed || [];
   $("bf-result").className = fail.length ? "error" : "success";
