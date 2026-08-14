@@ -15,7 +15,8 @@ from ..core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate
 from ..core.engines import ENGINES
 from ..core.quant import QUANT_BYTES
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
-                     save_model, save_gpu, fetch_model_preview, fetch_and_save_many)
+                     save_model, save_gpu, fetch_model_preview, fetch_and_save_many,
+                     infer_quant_from_id)
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -68,7 +69,8 @@ async def index(request: Request):
 @app.get("/api/models")
 def api_models():
     return [{"id": m.id, "name": m.name, "is_moe": bool(m.num_experts),
-             "params_b": m.params_b, "category": m.category, "quant": m.quant} for m in list_models()]
+             "params_b": m.params_b, "category": m.category,
+             "quant": m.quant or infer_quant_from_id(m.id)} for m in list_models()]
 
 
 @app.get("/api/gpus")

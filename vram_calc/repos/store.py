@@ -21,6 +21,27 @@ STANDARD_QUANTS = ("fp16", "bf16", "fp8", "int8", "int4",
                    "gguf-q4_k_m", "gguf-q5_k_m", "gguf-q8_0", "exl2")
 
 
+def infer_quant_from_id(model_id: str) -> str:
+    """Infer a fixed quant from a repo id/name — fallback for entries saved
+    before quant auto-detection, or GGUF repos (quant only in filename)."""
+    s = model_id.lower()
+    for tag, q in (("q8_0", "gguf-q8_0"), ("q6_k", "gguf-q6_k"), ("q5_k_m", "gguf-q5_k_m"),
+                   ("q4_k_m", "gguf-q4_k_m"), ("q3_k_m", "gguf-q3_k_m"), ("q2_k", "gguf-q2_k")):
+        if tag in s:
+            return q
+    if "exl2" in s:
+        return "exl2"
+    if "awq" in s or "gptq" in s:
+        return "int8" if ("int8" in s or "8bit" in s) else "int4"
+    if "int8" in s or "8bit" in s:
+        return "int8"
+    if "int4" in s or "4bit" in s:
+        return "int4"
+    if "fp8" in s:
+        return "fp8"
+    return ""
+
+
 class EntityStore:
     """Bundled JSON array + user dir of per-entity JSON files, merged (user wins)."""
 
