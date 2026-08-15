@@ -14,12 +14,23 @@ function currentModelIsMoe() {
   return !!(m && m.is_moe);
 }
 
-// map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP)
+// sync the TP/PP/EP-vs-gpu-count consistency hint (called on any of the 4 inputs)
+function syncParallelHint() {
+  const th = $("tp-hint");
+  if (!th) return;
+  const n = +$("gpu_count").value || 1;
+  const t = +$("tp").value || 1, p = +$("pp").value || 1, e = +$("ep").value || 1;
+  const used = t * p * (currentModelIsMoe() ? e : 1);
+  th.textContent = used !== n
+    ? `当前 TP×PP${currentModelIsMoe() ? "×EP" : ""} = ${used} 卡,与显卡数量 ${n} 不一致` : "";
+}
+
+// map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP; any N incl. odd works)
 function applyParallelStrategy() {
   const n = +$("gpu_count").value || 1;
   $("tp").value = 1; $("pp").value = 1; $("ep").value = 1;
   const hint = $("parallel-hint");
-  if (n === 1) { hint.textContent = "单卡部署。模型放不下时调高显卡数量分摊。"; return; }
+  if (n === 1) { hint.textContent = "单卡部署。模型放不下时调高显卡数量分摊。"; syncParallelHint(); return; }
   if (currentModelIsMoe()) {
     $("ep").value = n;
     hint.textContent = `${n} 卡专家并行(EP)：每卡只装 1/${n} 的专家权重`;
@@ -27,6 +38,7 @@ function applyParallelStrategy() {
     $("tp").value = n;
     hint.textContent = `${n} 卡张量并行(TP)：每卡显存 ≈ 总量 ÷ ${n}`;
   }
+  syncParallelHint();
 }
 
 // accept "4096" / "32k" / "200k" / "1m"
@@ -46,8 +58,7 @@ function onContextInput() {
 
 async function init() {
   await loadDropdowns();
-  for (const id of ["tp", "pp"]) PARALLEL.forEach((n) => $(id).add(new Option(n, n)));
-  EP_VALS.forEach((n) => $("ep").add(new Option(n, n)));
+  // tp/pp/ep are now free number inputs -- nothing to populate
   bindEvents();
   onContextInput();
   onModelChange();
@@ -119,6 +130,7 @@ function bindEvents() {
       if (id === "gpu_util") $("util-val").textContent = Math.round(+$("gpu_util").value * 100) + "%";
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
+      if (id === "tp" || id === "pp" || id === "ep") syncParallelHint();
       debounced();
     }));
   $("btn-add-model").onclick = openModelModal;
@@ -240,20 +252,14 @@ function sweepChart(s, sweepLabel = "并发数") {
   const line = pts.map((p, i) => `${i ? "L" : "M"}${X(p.x).toFixed(1)},${Y(p.total_gb).toFixed(1)}`).join(" ");
   const capY = Y(s.capacity_gb), useY = Y(s.usable_gb);
 
-  // y-axis gridlines + GB tick labels
+  // y-axis gridlines only (no numeric ticks: the two labeled reference lines carry the scale)
   let grid = "";
   for (let i = 0; i <= 4; i++) {
     const v = (ymax * i) / 4, y = Y(v);
-    grid += `<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W - pr}" y2="${y.toFixed(1)}" stroke="#e1e0d9"/>` +
-            `<text x="${pl - 6}" y="${(y + 3).toFixed(1)}" font-size="9.5" fill="#898781" text-anchor="end">${Math.round(v)}</text>`;
+    grid += `<line x1="${pl}" y1="${y.toFixed(1)}" x2="${W - pr}" y2="${y.toFixed(1)}" stroke="#e1e0d9"/>`;
   }
-  // x-axis ticks (concurrency values)
-  const every = pts.length > 9 ? 2 : 1;
-  let ticks = "";
-  pts.forEach((p, i) => {
-    if (i % every) return;
-    ticks += `<text x="${X(p.x).toFixed(1)}" y="${H - 12}" font-size="9.5" fill="#898781" text-anchor="middle">${p.x}</text>`;
-  });
+  // x-axis: no per-point ticks (values can overflow any fixed range); units only
+  const ticks = "";
 
   let mark = "";
   if (s.max_x) {

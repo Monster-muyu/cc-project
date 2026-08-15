@@ -47,12 +47,13 @@
     <label>显卡数量 <input id="gpu_count" type="number" value="1" min="1" max="128"/>
     <p class="hint" id="parallel-hint">单卡部署。</p>
     <details>
-      <summary class="hint">高级：自定义 TP / PP / EP 并行</summary>
+      <summary class="hint">高级：自定义 TP / PP / EP 并行（如超出下拉范围可自由输入）</summary>
       <div class="row">
-        <label>TP <select id="tp"></select></label>
-        <label>PP <select id="pp"></select></label>
-        <label>EP <select id="ep"></select></label>
+        <label>TP <input id="tp" type="number" value="1" min="1" max="128"/></label>
+        <label>PP <input id="pp" type="number" value="1" min="1" max="128"/></label>
+        <label>EP <input id="ep" type="number" value="1" min="1" max="128"/></label>
       </div>
+      <p class="hint" id="tp-hint"></p>
     </details>
     <label>KV 量化 <select id="kv_quant">
       {% for k in kv_quants %}<option value="{{ k }}">{{ k }}</option>{% endfor %}
@@ -156,6 +157,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=15"></script>
+<script src="/static/app.js?v=17"></script>
 </body>
 </html>
