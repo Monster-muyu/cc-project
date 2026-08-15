@@ -155,10 +155,8 @@ max_kv_tokens = KV 池 ÷ 每 token 字节        # 池子能装多少 token
 ```
 
 ### 5.7 结论（Verdict）
-```
-单卡需求显存  vs  GPU显存 × 安全系数(默认0.9)
-→ 🟢 放得下（剩 X GB） / 🟡 偏紧（建议减并发/上下文） / 🔴 放不下（差 Y GB / 建议加卡）
-```
+
+已被 §5.8 取代——v2.0 按 vLLM 真实语义判定(OOM=固定部分超限;能跑·会限流=负载超池子;放得下)。
 
 ### 5.8 结论(Verdict,vLLM 真实语义)
 ```
@@ -271,17 +269,18 @@ POST /api/models      添加模型（拉取+解析+入库）
 { "model_id", "quant", "gpu_id",
   "context_len", "concurrency",
   "engine", "tp", "pp", "ep", "nodes",
-  "kv_quant", "cpu_offload" }
+  "kv_quant", "cpu_offload",
+  "safety_factor", "max_num_batched_tokens" }
 ```
 `/api/calc` 响应：
 ```json
-{ "verdict": "ok|tight|over",
-  "total_gb": 21.1, "per_gpu_gb": 10.55,
-  "capacity_gb": 48, "usable_gb": 40.8, "headroom_gb": 19.7,
-  "breakdown": {"weights":16.13,"kv_cache":0,"activation":1.01,"overhead":3.97},
-  "num_gpus": 2, "max_kv_tokens": 150275, "kv_budget_gb": 19.7 }
+{ "verdict": "ok",
+  "total_gb": 19.87, "per_gpu_gb": 19.87,
+  "capacity_gb": 24, "usable_gb": 21.6, "headroom_gb": 1.73,
+  "breakdown": {"weights":16.06,"kv_cache":0.54,"activation":0.81,"overhead":2.46},
+  "num_gpus": 1, "max_kv_tokens": 17327, "kv_budget_gb": 2.27 }
 ```
-`total_gb/breakdown` 为**固定占用**(KV 动态,不在内),多卡为合计口径。
+`total_gb/breakdown` 为**总占用**(含请求负载的 KV=上下文×并发;多卡为合计口径),池容量见 `max_kv_tokens`/`kv_budget_gb`。
 
 `/api/sweep` 响应：
 ```json

@@ -101,14 +101,6 @@ class Estimate:
     max_kv_tokens: int = 0     # max KV tokens vLLM-style dynamic allocation can hold
 
 
-def _verdict(headroom: float, usable: float) -> str:
-    if headroom < 0:
-        return "over"
-    if headroom < 0.05 * usable:   # < 5% headroom -> tight
-        return "tight"
-    return "ok"
-
-
 def estimate(inp: EstimateInput) -> Estimate:
     m = inp.model
     bpp = bytes_per_param(inp.quant, inp.exl2_bpw)
