@@ -1,0 +1,110 @@
+=== commits 1f8031c..HEAD ===
+e1df574 fix:引擎开销线性项封顶cap_gb(修DeepSeek-V3级超大模型41GB开销失真)
+
+=== stat ===
+ tests/test_estimator.py     | 10 ++++++++++
+ vram_calc/core/engines.py   | 19 +++++++++++--------
+ vram_calc/core/estimator.py |  3 ++-
+ 3 files changed, 23 insertions(+), 9 deletions(-)
+
+=== diff ===
+diff --git a/tests/test_estimator.py b/tests/test_estimator.py
+index 129f6b7..60224a4 100644
+--- a/tests/test_estimator.py
++++ b/tests/test_estimator.py
+@@ -125,10 +125,20 @@ def test_llama3_8b_fits_4090():
+     assert r.headroom_gb > 0
+     assert r.verdict != "over"
+ 
+ 
+ def test_oversize_is_over():
+     big = ModelSpec(id="big", name="big", params_b=40, layers=80, hidden_dim=8192,
+                     attn_heads=64, kv_heads=8, head_dim=128)
+     r = estimate(_inp(big, context_len=4096))
+     assert r.verdict == "over"
+     assert r.headroom_gb < 0
++
++
++def test_overhead_capped_for_huge_models():
++    # DeepSeek-V3 661GB 权重:线性 0.06 会算出 ~40GB 开销(失真),封顶后 ≤ baseline+cap
++    ds = ModelSpec(id="dsv3", name="DeepSeek-V3", params_b=671, layers=61, hidden_dim=7168,
++                   attn_heads=128, kv_heads=128, head_dim=128,
++                   num_experts=256, expert_params_b=660.0)
++    h100 = GpuSpec(id="h100", name="H100 80G", vram_gb=80)
++    r = estimate(EstimateInput(model=ds, gpu=h100, quant="fp8", context_len=4096))
++    assert r.breakdown.overhead <= 1.5 + 6.0 + 0.01    # vllm baseline 1.5 + cap 6.0
+diff --git a/vram_calc/core/engines.py b/vram_calc/core/engines.py
+index b74090c..8927f6c 100644
+--- a/vram_calc/core/engines.py
++++ b/vram_calc/core/engines.py
+@@ -1,31 +1,34 @@
+-"""Inference-engine overhead profiles: (baseline GB, weight-ratio).
++"""Inference-engine overhead profiles: (baseline GB, weight-ratio, cap GB).
+ 
+-overhead = baseline_gb + on_gpu_weight_gb * weight_ratio
++overhead = baseline_gb + min(on_gpu_weight_gb * weight_ratio, cap_gb)
+   - baseline_gb : fixed runtime cost (CUDA context, graphs, paged-attn buffers)
+   - weight_ratio: overhead that scales with resident weight size
++  - cap_gb      : linear term breaks down on huge models (661GB weights -> 40GB
++                  overhead was absurd); real engines don't scale that far.
+ 
+-# ponytail: these coefficients are PLACEHOLDERS. Calibrate against real
+-# nvidia-smi readings in step 5. Upgrade path: per-engine empirical fit.
++# ponytail: coefficients are placeholders. Calibrate with scripts/calibrate.py
++# and your vLLM startup log ("# CUDA blocks: N" -> pool = N * 16 tokens).
+ """
+ 
+ from dataclasses import dataclass
+ 
+ 
+ @dataclass(frozen=True)
+ class EngineProfile:
+     baseline_gb: float
+     weight_ratio: float
++    cap_gb: float = 4.0
+ 
+ 
+ ENGINES: dict[str, EngineProfile] = {
+-    "vllm": EngineProfile(1.5, 0.06),
+-    "sglang": EngineProfile(1.2, 0.05),
+-    "llama_cpp": EngineProfile(0.3, 0.02),
+-    "ollama": EngineProfile(0.8, 0.04),
++    "vllm": EngineProfile(1.5, 0.06, 6.0),
++    "sglang": EngineProfile(1.2, 0.05, 5.0),
++    "llama_cpp": EngineProfile(0.3, 0.02, 1.5),
++    "ollama": EngineProfile(0.8, 0.04, 3.0),
+ }
+ 
+ 
+ def get_engine(name: str) -> EngineProfile:
+     if name not in ENGINES:
+         raise ValueError(f"unknown engine {name!r}; known: {sorted(ENGINES)}")
+     return ENGINES[name]
+diff --git a/vram_calc/core/estimator.py b/vram_calc/core/estimator.py
+index 67299be..8fdb41c 100644
+--- a/vram_calc/core/estimator.py
++++ b/vram_calc/core/estimator.py
+@@ -132,21 +132,22 @@ def estimate(inp: EstimateInput) -> Estimate:
+           * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
+ 
+     # --- transient prefill activation (GB) ---
+     # bounded by max_num_batched_tokens (vLLM chunked-prefill batch), NOT context*concurrency.
+     # Activations are fp16 (2 B) regardless of weight quant (compute stays fp16).
+     activation = (inp.max_num_batched_tokens * m.hidden_dim * 2
+                   * ACTIVATION_COEFF) / GB * gpu_frac / (inp.tp * inp.pp)
+ 
+     # --- overhead ---
+     eng = get_engine(inp.engine)
+-    overhead = eng.baseline_gb + (dense_w + expert_w) * gpu_frac * eng.weight_ratio
++    overhead = eng.baseline_gb + min(
++        (dense_w + expert_w) * gpu_frac * eng.weight_ratio, eng.cap_gb)
+ 
+     bd = Breakdown(weights=weights, kv_cache=kv,
+                    activation=activation, overhead=overhead)
+ 
+     capacity = inp.gpu.vram_gb
+     usable = capacity * inp.safety_factor
+     headroom = usable - bd.total
+     num_gpus = inp.tp * inp.pp * ep_eff
+ 
+     # vLLM-style KV budget: VRAM left after FIXED weights+overhead+activation (per GPU),
