@@ -46,6 +46,7 @@
     </select></label>
     <label>显卡数量 <input id="gpu_count" type="number" value="1" min="1" max="128"/>
     <p class="hint" id="parallel-hint">单卡部署。</p>
+    <p class="hint warn" id="tp-warn" hidden></p>
     <details>
       <summary class="hint">高级：自定义 TP / PP / EP 并行（如超出下拉范围可自由输入）</summary>
       <div class="row">
@@ -157,6 +158,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=18"></script>
+<script src="/static/app.js?v=19"></script>
 </body>
 </html>

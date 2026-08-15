@@ -160,6 +160,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 .grid2 .hint { grid-column: 1 / -1; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .hint { font-size: 12px; color: var(--muted); line-height: 1.5; }
+.hint.warn { color: #b3261e; font-weight: 600; }
 .error { font-size: 12px; color: var(--crit); min-height: 16px; margin-top: 6px; }
 .success { font-size: 12px; color: var(--good); }
 

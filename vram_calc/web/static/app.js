@@ -32,6 +32,17 @@ function syncParallelHint() {
   if ((eng === "vllm" || eng === "sglang") && m && m.attn_heads && t > 1 && m.attn_heads % t !== 0)
     msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
   th.textContent = msgs.join("; ");
+  // also surface the head-divisibility blocker OUTSIDE the collapsed details
+  const m2 = currentModel();
+  const warn = $("tp-warn");
+  if (warn) {
+    const eng2 = $("engine").value;
+    const blocked = (eng2 === "vllm" || eng2 === "sglang") && m2 && m2.attn_heads
+      && t > 1 && m2.attn_heads % t !== 0;
+    warn.hidden = !blocked;
+    if (blocked) warn.textContent =
+      `⚠️ ${eng2} 无法启动:${m2.name} 注意力头数 ${m2.attn_heads} 不能被 TP=${t} 整除。改用 PP、换能整除的卡数,或换 llama.cpp 引擎`;
+  }
 }
 
 // map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP; any N incl. odd works)
