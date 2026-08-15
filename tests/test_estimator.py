@@ -132,3 +132,13 @@ def test_oversize_is_over():
     r = estimate(_inp(big, context_len=4096))
     assert r.verdict == "over"
     assert r.headroom_gb < 0
+
+
+def test_overhead_capped_for_huge_models():
+    # DeepSeek-V3 661GB 权重:线性 0.06 会算出 ~40GB 开销(失真),封顶后 ≤ baseline+cap
+    ds = ModelSpec(id="dsv3", name="DeepSeek-V3", params_b=671, layers=61, hidden_dim=7168,
+                   attn_heads=128, kv_heads=128, head_dim=128,
+                   num_experts=256, expert_params_b=660.0)
+    h100 = GpuSpec(id="h100", name="H100 80G", vram_gb=80)
+    r = estimate(EstimateInput(model=ds, gpu=h100, quant="fp8", context_len=4096))
+    assert r.breakdown.overhead <= 1.5 + 6.0 + 0.01    # vllm baseline 1.5 + cap 6.0

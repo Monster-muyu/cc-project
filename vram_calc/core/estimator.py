@@ -139,7 +139,8 @@ def estimate(inp: EstimateInput) -> Estimate:
 
     # --- overhead ---
     eng = get_engine(inp.engine)
-    overhead = eng.baseline_gb + (dense_w + expert_w) * gpu_frac * eng.weight_ratio
+    overhead = eng.baseline_gb + min(
+        (dense_w + expert_w) * gpu_frac * eng.weight_ratio, eng.cap_gb)
 
     bd = Breakdown(weights=weights, kv_cache=kv,
                    activation=activation, overhead=overhead)
