@@ -1,7 +1,10 @@
 # VRAM 显存计算工具 — 设计文档
 
-> 版本: v1.1 · 状态: 设计定稿 · 日期: 2026-08-13
-> v1.1 变更: 纳入简化版 EP（专家并行，仅 MoE）。
+> 版本: v2.0 · 状态: 已实现(与代码同步) · 初稿 2026-08-13 · 同步 2026-08-15
+> v2.0 变更: KV 改 vLLM 分页池模型(动态预算/max_kv_tokens);verdict 改三档真实语义
+> (OOM=权重放不下 / 能跑·会限流=负载超池子 / 放得下);参数新增 max_num_batched_tokens
+> 与显存利用率(gpu_memory_utilization);模型源新增 ModelScope;UI 新增并发↔上下文推荐、
+> quant 自动识别锁定、显卡数量自由输入、上下文单位(k/m);敏感度图改"KV 需求 vs KV 预算"。
 
 ## 1. 概述与目标
 
@@ -85,19 +88,30 @@
 | GGUF | 按档 bpw ÷ 8：Q4_K_M≈4.5、Q5_K_M≈5.5、Q6_K≈6.6、Q8_0≈8.5 | bits-per-weight 表 |
 | EXL2 | 用户指定位宽 ÷ 8 | |
 
-### 5.2 KV cache（推理大头）
-```
-KV显存 = 2(K和V) × 层数L × 上下文C × KV头数H_kv × 头维度D_h × KV元素字节 × 并发数N
-```
-- **用 KV 头数 H_kv**，非注意力头数 —— GQA/MQA 省 KV 的关键（如 Llama-3-8B：32 注意力头但仅 8 KV 头）。
-- KV 元素字节：FP16=2，FP8/INT8 KV=1。
-- 并发数 N × KV —— 服务端场景的决定性变量。
+### 5.2 KV cache —— vLLM 分页池模型(核心)
 
-### 5.3 激活（Activations）
+vLLM 启动时把 `gpu_memory_utilization` 扣掉权重+开销后的显存**全部划给一个分页 KV 池**,
+池大小与 `max_model_len`、并发数**无关**:
+
 ```
-激活 ≈ batch × 上下文C × 隐藏维度 × 字节 × 小系数
-# ponytail: 推理激活远小于训练，用保守经验公式；要精度时接实测 profiling
+KV 预算(每卡) = 显存利用率×卡容量 − 权重 − 激活 − 开销
+KV 池(聚合)  = KV 预算 × (TP × PP)          # EP 卡只装专家不装 KV
+每 token 字节 = 2 × 层数L × KV头数H_kv × 头维度D_h × KV元素字节   # 全模型口径
+max_kv_tokens = KV 池 ÷ 每 token 字节        # 池子能装多少 token
 ```
+
+- **用 KV 头数 H_kv**(GQA 关键:Llama-3-8B 32 注意力头仅 8 KV 头)
+- KV 元素字节:FP16=2,FP8/INT8=1(由 `kv_quant` 决定)
+- 运行时请求按需从池里拿块;池满 → 抢占/换出(变慢,**不 OOM**)
+- 填 max_model_len 超池容量不会 OOM(部分 vLLM 版本会拒绝启动,见 README 注意事项)
+
+### 5.3 激活(Transient prefill activation)
+```
+激活 ≈ max_num_batched_tokens × 隐藏维度 × 2字节 × 系数(12) ÷ (TP × PP)
+```
+- 由 vLLM 的 `max_num_batched_tokens`(chunked prefill 批量)驱动,**不是** 上下文×并发
+- 激活值恒为 fp16(2 字节),与权重量化无关(计算精度仍是 fp16)
+# ponytail: 系数 12 为经验值,标定见 scripts/calibrate.py
 
 ### 5.4 开销（Overhead，引擎相关）
 ```
@@ -107,6 +121,7 @@ KV显存 = 2(K和V) × 层数L × 上下文C × KV头数H_kv × 头维度D_h × 
 - vLLM：基线较高（CUDA graphs、paged-attention 缓冲），比例中等
 - llama.cpp：基线低，比例小
 - SGLang / Ollama：各自一档
+- 线性项**封顶** `cap_gb`:超大模型(如 DeepSeek-V3 661GB 权重)线性外推会失真(曾算出 41GB 开销),封顶后 vLLM ≤ 7.5GB
 
 ### 5.5 多卡分摊（TP/PP/EP，含多节点）
 
@@ -145,6 +160,15 @@ KV显存 = 2(K和V) × 层数L × 上下文C × KV头数H_kv × 头维度D_h × 
 → 🟢 放得下（剩 X GB） / 🟡 偏紧（建议减并发/上下文） / 🔴 放不下（差 Y GB / 建议加卡）
 ```
 
+### 5.8 结论(Verdict,vLLM 真实语义)
+```
+over  (OOM 放不下) : 权重+激活+开销 > 显存利用率×容量 → 加载即爆,与上下文无关
+ok    (放得下)     : 固定部分放得下,且 上下文×并发 ≤ max_kv_tokens
+tight (能跑·会限流): 固定部分放得下,但负载超池子 → 抢占/排队,变慢不崩
+```
+UI 同时给出 KV 池容量、并发↔上下文对照表(用户并发高亮)、三条推荐
+(保并发/保上下文/保守推荐——按 80% 预算 + 向下取整,保证照着输放得下)。
+
 ## 6. 数据来源
 
 ### 6.1 模型库
@@ -163,10 +187,15 @@ KV显存 = 2(K和V) × 层数L × 上下文C × KV头数H_kv × 头维度D_h × 
 ```
 （`num_experts` / `expert_params_b` 为 MoE 专用，dense 模型设 0。）
 
-**按需拉取**（"添加模型"流程，两次极小网络请求，零权重下载）：
-1. `model_info(repo_id)` → ~1KB JSON → `safetensors.parameters`（参数量，精确，HF 服务端算好）
-2. `hf_hub_download(repo_id, "config.json")` → 几百字节 → 架构字段（经别名解析器）
-3. 解析预览（字段可编辑）→ 用户确认 → 写入 `~/.vram_calc/models/<id>.json`
+**按需拉取**(添加模型/批量导入弹窗,来源可选 HuggingFace / ModelScope):
+- HF:`model_info().safetensors.parameters`(参数量精确)+ `config.json`(架构)
+- ModelScope(魔搭,国内直连):`GET modelscope.cn/api/v1/models/{id}/repo?FilePath=config.json`
+  取架构;其 API 无参数量明细(仅 StorageSize,量化后失真)→ **架构估算参数量(实测误差 ~1%)**,
+  预览框可手改。模型 ID 存为 `ms/{repo_id}` 前缀以区分来源
+- 预量化仓库(AWQ/GPTQ)从 config 的 `quantization_config` 自动识别量化并**锁定**下拉框;
+  兜底:从仓库名推断(`infer_quant_from_id`,AWQ-INT4→int4 等)
+- VL/多模态模型架构嵌套在 `text_config` 下,别名解析器自动下钻(视觉编码器忽略,轻微低估)
+- MoE 专家数别名含 `n_routed_experts`(DeepSeek),专家参数按 3×hidden×intermediate×层数估算
 
 ### 6.2 config.json 字段名不统一 → 别名解析器（`core/arch_resolver.py`）
 不同架构字段名不同，按优先级回退：
@@ -203,9 +232,11 @@ experts:  num_local_experts → num_experts → 0
 ### 7.1 选择面板（左）
 - 模型 ▼ → 量化 ▼（按模型支持项过滤）
 - 显卡 ▼
-- 推理参数：上下文长度（数值框，带 4096/8192/32768 预设）、并发请求数（数值框）
-- 并行策略：推理引擎 ▼、TP/PP/**EP**（EP 仅 MoE 模型显示）、节点数、CPU offload 滑块
-- KV 选项：KV 量化 ▼
+- 推理参数:上下文长度(文本框,支持 32k/200k/1m 单位;=每请求**实际活跃上下文**,非最大窗口)、
+  并发请求数、最大批处理(vLLM max_num_batched_tokens)
+- 并行:推理引擎 ▼、**显卡数量(自由输入 1~128)**——自动选策略(dense→TP,MoE→EP,实时提示)、
+  显卡利用率滑块(= gpu_memory_utilization)、KV 量化 ▼、CPU offload 滑块(llama.cpp 专属)、
+  高级折叠内手动 TP/PP/EP(档位到 64)
 - [🧮 计算] 按钮（移动端用，桌面端 debounce 300ms 自动算）
 
 > 控件按性质分：枚举型（模型/显卡/引擎/TP/PP/EP）走下拉框 + 旁边"➕添加"入口（库里没有的走弹窗补，不在下拉里自由输入以保证数据完整）；数值型（上下文/并发）走数值输入框，支持手动输入。
@@ -213,7 +244,10 @@ experts:  num_local_experts → num_experts → 0
 ### 7.2 结果面板（右）— 3 张图 + 明细
 **图 1 · 容量条（结论区主视觉）**：GPU 总容量容器内填需求量，绿/黄/红，一眼看满没满。
 **图 2 · 堆叠柱（明细区）**：权重/KV/激活/开销占比。
-**图 3 · 敏感度曲线**：扫并发数（或上下文），VRAM 曲线撞容量线处 = 最大可用并发。
+**图 3 · 敏感度曲线**:**KV 需求(上下文×并发×每token字节)vs KV 预算**——横轴扫并发,
+橙线撞黄虚线(预算)处 = 最多可承载并发;调上下文/KV量化曲线实时变。带坐标轴/网格/刻度/图例。
+另:KV 容量框(预算 GB + token 位 + 并发↔上下文表 + 三推荐);多卡时 headline 用合计口径
+(可用=卡数×单卡,每卡分摊单独标注)。
 + 显存明细分解表（各项 GB + 百分比 + 合计 + 可用空间）。
 
 三个图均原生 SVG + vanilla JS 客户端渲染，**零图表库依赖**。配色统一（亮/暗、色盲安全，实现时用 dataviz skill）。
@@ -242,16 +276,19 @@ POST /api/models      添加模型（拉取+解析+入库）
 `/api/calc` 响应：
 ```json
 { "verdict": "ok|tight|over",
-  "total_gb": 24.4, "capacity_gb": 24.0, "usable_gb": 21.6,
-  "headroom_gb": -0.4,
-  "breakdown": {"weights":15.2,"kv":7.8,"activation":0.3,"overhead":1.1},
-  "per_gpu": 12.2 }
+  "total_gb": 21.1, "per_gpu_gb": 10.55,
+  "capacity_gb": 48, "usable_gb": 40.8, "headroom_gb": 19.7,
+  "breakdown": {"weights":16.13,"kv_cache":0,"activation":1.01,"overhead":3.97},
+  "num_gpus": 2, "max_kv_tokens": 150275, "kv_budget_gb": 19.7 }
 ```
+`total_gb/breakdown` 为**固定占用**(KV 动态,不在内),多卡为合计口径。
+
 `/api/sweep` 响应：
 ```json
-{ "points": [{"x":1,"total_gb":18.2}, ...],
-  "capacity_gb": 24.0, "max_x": 5 }
+{ "points": [{"x":1,"total_gb":4.19}, ...],
+  "capacity_gb": 22.1, "usable_gb": 21.7, "max_x": 5, "kv_budget_gb": 22.1 }
 ```
+`total_gb` 为 **KV 需求**(bpt×上下文×并发),容量线即 KV 预算。
 
 普通计算零网络（模型已在本地库）；仅"添加模型"联网两次。
 
