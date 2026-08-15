@@ -24,6 +24,16 @@ templates = Jinja2Templates(directory=str(BASE / "templates"))
 app = FastAPI(title="VRAM 显存计算工具")
 app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
+
+@app.middleware("http")
+async def no_cache(request, call_next):
+    """Dev server: never let the browser cache HTML or static assets.
+    Recurring 'fix not visible' reports were stale-JS caches every time."""
+    resp = await call_next(request)
+    if request.url.path.startswith("/static") or request.url.path == "/":
+        resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+
 KV_QUANTS = ["fp16", "fp8", "int8"]
 
 

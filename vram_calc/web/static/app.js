@@ -132,7 +132,7 @@ async function recalc() {
   const r = await fetch("/api/calc", opt).then((r) => r.json());
   if (r.error) { $("verdict").textContent = r.error; return; }
   renderResult(r);
-  const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1&x1=16", opt).then((r) => r.json());
+  const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1&x1=64", opt).then((r) => r.json());
   if (!s.error) $("chart-sweep").innerHTML = sweepChart(s, "并发数");
 }
 
@@ -260,6 +260,12 @@ function sweepChart(s, sweepLabel = "并发数") {
     const p = pts.find((p) => p.x === s.max_x);
     if (p) mark = `<circle cx="${X(p.x).toFixed(1)}" cy="${Y(p.total_gb).toFixed(1)}" r="3.5" fill="${C.crit}"/>` +
       `<text x="${X(p.x).toFixed(1)}" y="${Y(p.total_gb).toFixed(1) - 8}" font-size="10.5" fill="${C.crit}" text-anchor="middle" font-weight="700">最大 ${s.max_x}</text>`;
+  } else if (pts.length && pts[0].total_gb > s.capacity_gb) {
+    // even 1 concurrent request exceeds the budget -> no mark, explicit hint
+    mark = `<text x="${(pl + W - pr) / 2}" y="${pt + 2}" font-size="10.5" fill="${C.crit}" text-anchor="middle" font-weight="700">预算装不下单路请求:减上下文/加卡/提高利用率</text>`;
+  } else {
+    // whole range fits: real max is beyond x1, say so instead of a misleading marker
+    mark = `<text x="${(pl + W - pr) / 2}" y="${pt + 2}" font-size="10.5" fill="${C.good}" text-anchor="middle" font-weight="700">全范围都放得下,最大并发 > ${pts[pts.length - 1].x}</text>`;
   }
   return `<svg width="${W}" height="${H}" class="chart">
     ${grid}${ticks}
