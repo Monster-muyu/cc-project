@@ -81,7 +81,7 @@ async def index(request: Request):
 @app.get("/api/models")
 def api_models():
     return [{"id": m.id, "name": m.name, "is_moe": bool(m.num_experts),
-             "params_b": m.params_b, "category": m.category,
+             "params_b": m.params_b, "category": m.category, "attn_heads": m.attn_heads,
              "quant": m.quant or infer_quant_from_id(m.id)} for m in list_models()]
 
 
@@ -127,13 +127,22 @@ def api_sweep(req: CalcReq,
     # not resident VRAM (resident is context-independent in the pool model)
     kvb = bytes_per_kv(req.kv_quant)
     bpt = 2 * m.layers * m.kv_heads * m.head_dim * kvb if m else 0
+    budget = base.kv_budget_gb
+    # adaptive x-axis: solve budget/bpt for the REAL ceiling, then sweep a range
+    # that comfortably brackets it (ceiling*1.3, capped at 4096) -- never a fixed 1..N
+    if bpt > 0 and budget > 0:
+        per_step = bpt * req.context_len / 1e9 if sweep_var == "concurrency" else bpt * req.concurrency / 1e9
+        ceiling = int(budget / per_step) if per_step > 0 else 64
+        x1 = max(8, min(4096, ceiling * 13 // 10 + 2))
     points = []
-    for x in range(max(x0, 1), x1 + 1):
+    # sample at most ~40 points so large ranges stay readable
+    total = x1 - max(x0, 1) + 1
+    step = max(1, total // 40)
+    for x in range(max(x0, 1), x1 + 1, step):
         ctx = x if sweep_var == "context_len" else req.context_len
         conc = x if sweep_var == "concurrency" else req.concurrency
         kv_demand = bpt * ctx * conc / 1e9
         points.append({"x": x, "total_gb": round(kv_demand, 2)})
-    budget = base.kv_budget_gb
     max_x = max((p["x"] for p in points if p["total_gb"] <= budget), default=None)
     return {"points": points, "capacity_gb": round(budget, 2),
             "usable_gb": round(budget * 0.98, 2), "max_x": max_x, "kv_budget_gb": budget}

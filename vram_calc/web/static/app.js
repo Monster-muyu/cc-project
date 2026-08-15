@@ -9,20 +9,29 @@ const CAT_LABEL = { llm: "LLM", embedding: "向量", multimodal: "多模态", vi
 let ALL_MODELS = [];
 let activeCat = "all";
 
+function currentModel() {
+  return ALL_MODELS.find((x) => x.id === $("model").value);
+}
 function currentModelIsMoe() {
-  const m = ALL_MODELS.find((x) => x.id === $("model").value);
-  return !!(m && m.is_moe);
+  return !!currentModel()?.is_moe;
 }
 
-// sync the TP/PP/EP-vs-gpu-count consistency hint (called on any of the 4 inputs)
+// sync TP/PP/EP-vs-gpu-count consistency + vLLM head-divisibility hints
 function syncParallelHint() {
   const th = $("tp-hint");
   if (!th) return;
   const n = +$("gpu_count").value || 1;
   const t = +$("tp").value || 1, p = +$("pp").value || 1, e = +$("ep").value || 1;
   const used = t * p * (currentModelIsMoe() ? e : 1);
-  th.textContent = used !== n
-    ? `当前 TP×PP${currentModelIsMoe() ? "×EP" : ""} = ${used} 卡,与显卡数量 ${n} 不一致` : "";
+  const msgs = [];
+  if (used !== n)
+    msgs.push(`当前 TP×PP${currentModelIsMoe() ? "×EP" : ""} = ${used} 卡,与显卡数量 ${n} 不一致`);
+  // vLLM/SGLang require total attention heads % TP == 0 (odd GPU counts often fail)
+  const eng = $("engine").value;
+  const m = currentModel();
+  if ((eng === "vllm" || eng === "sglang") && m && m.attn_heads && t > 1 && m.attn_heads % t !== 0)
+    msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
+  th.textContent = msgs.join("; ");
 }
 
 // map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP; any N incl. odd works)
@@ -130,7 +139,7 @@ function bindEvents() {
       if (id === "gpu_util") $("util-val").textContent = Math.round(+$("gpu_util").value * 100) + "%";
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
-      if (id === "tp" || id === "pp" || id === "ep") syncParallelHint();
+      if (id === "tp" || id === "pp" || id === "ep" || id === "engine") syncParallelHint();
       debounced();
     }));
   $("btn-add-model").onclick = openModelModal;
@@ -144,7 +153,7 @@ async function recalc() {
   const r = await fetch("/api/calc", opt).then((r) => r.json());
   if (r.error) { $("verdict").textContent = r.error; return; }
   renderResult(r);
-  const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1&x1=64", opt).then((r) => r.json());
+  const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1", opt).then((r) => r.json());
   if (!s.error) $("chart-sweep").innerHTML = sweepChart(s, "并发数");
 }
 
