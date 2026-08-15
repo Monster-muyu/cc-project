@@ -33,16 +33,37 @@ function syncParallelHint() {
     msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
   th.textContent = msgs.join("; ");
   // also surface the head-divisibility blocker OUTSIDE the collapsed details
-  const m2 = currentModel();
   const warn = $("tp-warn");
   if (warn) {
-    const eng2 = $("engine").value;
-    const blocked = (eng2 === "vllm" || eng2 === "sglang") && m2 && m2.attn_heads
-      && t > 1 && m2.attn_heads % t !== 0;
+    const blocked = (eng === "vllm" || eng === "sglang") && m && m.attn_heads
+      && t > 1 && m.attn_heads % t !== 0;
     warn.hidden = !blocked;
     if (blocked) warn.textContent =
-      `⚠️ ${eng2} 无法启动:${m2.name} 注意力头数 ${m2.attn_heads} 不能被 TP=${t} 整除。改用 PP、换能整除的卡数,或换 llama.cpp 引擎`;
+      `⚠️ ${eng} 无法启动:${m.name} 注意力头数 ${m.attn_heads} 不能被 TP=${t} 整除。改用 PP、换能整除的卡数,或换 llama.cpp 引擎`;
   }
+}
+
+// user manually changed one of TP/PP/EP -> rebalance the others so the
+// product still equals gpu_count (e.g. 3 cards: TP=1 -> PP up to 3; TP=3 -> PP back to 1)
+function rebalanceParallel(changed) {
+  const n = +$("gpu_count").value || 1;
+  const moe = currentModelIsMoe();
+  let t = Math.max(1, +$("tp").value || 1);
+  let p = Math.max(1, +$("pp").value || 1);
+  let e = Math.max(1, +$("ep").value || 1);
+  if (!moe) e = 1;                       // EP is meaningless for dense models
+  // the dimension the user just set wins; the remaining one absorbs the residue
+  const residue = Math.max(1, Math.floor(n / (t * (moe ? e : 1))));
+  const residueE = Math.max(1, Math.floor(n / (t * p)));
+  if (changed === "tp") { p = residue; if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
+  else if (changed === "pp") { t = Math.max(1, Math.floor(n / p)); if (moe) e = 1; if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
+  else if (changed === "ep") { if (moe) { t = Math.max(1, Math.floor(n / e)); p = Math.max(1, Math.floor(n / (t * e))); } }
+  $("tp").value = t; $("pp").value = p; $("ep").value = e;
+  const used = t * p * (moe ? e : 1);
+  $("parallel-hint").textContent = used === n
+    ? `${used} 卡组合:TP=${t} × PP=${p}${moe ? ` × EP=${e}` : ""}`
+    : `TP=${t} × PP=${p}${moe ? ` × EP=${e}` : ""} = ${used} 卡,显卡数量 ${n} 无法整除配置(需 TP×PP${moe ? "×EP" : ""} = ${n})`;
+  syncParallelHint();
 }
 
 // map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP; any N incl. odd works)
@@ -150,7 +171,8 @@ function bindEvents() {
       if (id === "gpu_util") $("util-val").textContent = Math.round(+$("gpu_util").value * 100) + "%";
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
-      if (id === "tp" || id === "pp" || id === "ep" || id === "engine") syncParallelHint();
+      if (id === "tp" || id === "pp" || id === "ep") rebalanceParallel(id);
+      if (id === "engine") syncParallelHint();
       debounced();
     }));
   $("btn-add-model").onclick = openModelModal;
