@@ -57,6 +57,20 @@ def test_resolve_arch_moe_expert_estimate():
     assert a["expert_params_b"] > 40          # ~45B experts
 
 
+def test_resolve_arch_gdn_layer_types():
+    # Qwen3.8/Qwen3-Next style config: layer_types lists per-layer attention kind;
+    # 3 GDN + 1 full-attn per group -> only 1/4 of layers hold KV
+    cfg = {"num_hidden_layers": 64, "hidden_size": 5120, "num_attention_heads": 40,
+           "num_key_value_heads": 4, "head_dim": 128,
+           "layer_types": ["gdn", "gdn", "gdn", "full_attention"] * 16}
+    a = resolve_arch(cfg)
+    assert a["layers"] == 64
+    assert a["kv_layers"] == 16
+    # pure-attention config must NOT set kv_layers (0 == all layers)
+    pure = resolve_arch({k: v for k, v in cfg.items() if k != "layer_types"})
+    assert pure["kv_layers"] == 0
+
+
 # ---- entity store merge + override ----
 def test_store_bundled_loads():
     store = EntityStore("models.json", "models")

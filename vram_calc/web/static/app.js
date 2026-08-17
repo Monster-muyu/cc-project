@@ -7,6 +7,7 @@ const C = { w: "#2a78d6", kv: "#eb6834", act: "#1baf7a", oh: "#e87ba4",
             good: "#0ca30c", warn: "#fab219", crit: "#d03b3b", line: "#2a78d6" };
 const CAT_LABEL = { llm: "LLM", embedding: "向量", multimodal: "多模态", vision: "视觉" };
 let ALL_MODELS = [];
+let ALL_GPUS = [];
 let activeCat = "all";
 
 function currentModel() {
@@ -108,14 +109,35 @@ async function init() {
 
 async function loadDropdowns() {
   ALL_MODELS = await fetch("/api/models").then((r) => r.json());
-  const GPUS = await fetch("/api/gpus").then((r) => r.json());
+  ALL_GPUS = await fetch("/api/gpus").then((r) => r.json());
   buildCategoryFilter();
   filterModels();
   const gs = $("gpu");
   const cur = gs.value;
   gs.innerHTML = "";
-  GPUS.forEach((g) => gs.add(new Option(`${g.name} (${g.vram_gb}GB)`, g.id)));
+  ALL_GPUS.forEach((g) => gs.add(new Option(`${g.name} (${g.vram_gb}GB)`, g.id)));
   if (cur) gs.value = cur;
+}
+
+// FP8 hardware check: FP8 compute units exist only from Ada(sm89)/Hopper(sm90)+.
+// On older cards (3090/A100=Ampere sm80-86): FP8 KV cache -> vLLM refuses to start;
+// FP8 weights -> runs but is fake-fp8 (software dequant, no speedup).
+function syncGpuCapability() {
+  const el = $("fp8-warn");
+  if (!el) return;
+  const g = ALL_GPUS.find((x) => x.id === $("gpu").value);
+  if (!g || g.supports_fp8 === undefined) { el.hidden = true; return; }
+  const q = $("quant").value, kvq = $("kv_quant").value;
+  const eng = $("engine").value;
+  const msgs = [];
+  if (!g.supports_fp8) {
+    if (kvq === "fp8")
+      msgs.push(`KV 量化 fp8:${g.name}(${g.architecture}) 没有 FP8 硬件单元,${eng} 启动时会直接报错(compute capability 不支持)——改回 fp16/int8`);
+    if (q === "fp8")
+      msgs.push(`权重量化 fp8:${g.name} 无 FP8 计算路径,即使能加载也只是软件反量化模拟(不省算力、可能更慢)——建议 int8/int4`);
+  }
+  el.hidden = msgs.length === 0;
+  el.textContent = msgs.join("; ");
 }
 
 function buildCategoryFilter() {
@@ -148,6 +170,7 @@ function onModelChange() {
   const q = $("quant");
   if (m && m.quant) { q.value = m.quant; q.disabled = true; }   // pre-quantized repo -> lock
   else { q.disabled = false; }
+  syncGpuCapability();
 }
 
 function currentInput() {
@@ -173,6 +196,7 @@ function bindEvents() {
       if (id === "model" || id === "gpu_count") onModelChange();
       if (id === "tp" || id === "pp" || id === "ep") rebalanceParallel(id);
       if (id === "engine") syncParallelHint();
+      if (id === "gpu" || id === "quant" || id === "kv_quant" || id === "engine") syncGpuCapability();
       debounced();
     }));
   $("btn-add-model").onclick = openModelModal;
@@ -353,6 +377,7 @@ $("mf-fetch").onclick = async () => {
   $("mf-layers").value = m.layers; $("mf-hidden").value = m.hidden_dim;
   $("mf-attn").value = m.attn_heads; $("mf-kv").value = m.kv_heads;
   $("mf-headdim").value = m.head_dim; $("mf-experts").value = m.num_experts;
+  $("mf-kvlayers").value = m.kv_layers || 0;
   $("mf-expertparams").value = m.expert_params_b;
   $("mf-fields").classList.remove("hidden");
   $("mf-save").disabled = false;
@@ -363,6 +388,7 @@ $("mf-save").onclick = async () => {
     id: $("mf-repo").value.trim(), name: $("mf-name").value, category: $("mf-cat").value,
     params_b: +$("mf-params").value, layers: +$("mf-layers").value, hidden_dim: +$("mf-hidden").value,
     attn_heads: +$("mf-attn").value, kv_heads: +$("mf-kv").value, head_dim: +$("mf-headdim").value,
+    kv_layers: +$("mf-kvlayers").value || 0,
     num_experts: +$("mf-experts").value, expert_params_b: +$("mf-expertparams").value,
   };
   const r = await fetch("/api/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec) }).then((r) => r.json());

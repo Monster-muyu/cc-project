@@ -55,6 +55,31 @@ def test_weights_scale_with_quant():
 
 
 # ---- KV cache ----
+def test_gdn_hybrid_kv_layers():
+    # Qwen3.8-27B-style GDN hybrid: 64 layers but only 16 hold KV ->
+    # bytes/token and requested-load KV both 4x smaller than pure attention.
+    gdn = ModelSpec(id="gdn", name="gdn", params_b=27.78, layers=64, hidden_dim=5120,
+                    attn_heads=40, kv_heads=4, head_dim=128, kv_layers=16)
+    pure = ModelSpec(id="pure", name="pure", params_b=27.78, layers=64, hidden_dim=5120,
+                     attn_heads=40, kv_heads=4, head_dim=128)
+    r_gdn = estimate(_inp(gdn, context_len=200_000, concurrency=2))
+    r_pure = estimate(_inp(pure, context_len=200_000, concurrency=2))
+    assert r_gdn.breakdown.kv_cache == pytest.approx(r_pure.breakdown.kv_cache / 4)
+    assert r_gdn.max_kv_tokens == pytest.approx(r_pure.max_kv_tokens * 4)
+    # user's manual math: 16 layers * 2 * 4 heads * 128 dim * 2B = 32,768 B/token;
+    # 200k ctx * 2 conc = 400k tokens -> 400_000 * 32768 / 1e9 = 13.1 GB
+    assert r_gdn.breakdown.kv_cache == pytest.approx(13.1, rel=0.02)
+
+
+def test_kv_layers_zero_means_all():
+    # kv_layers=0 or == layers must behave identically to omitting the field
+    m0 = ModelSpec(id="m0", name="m0", params_b=1, layers=8, hidden_dim=256,
+                   attn_heads=4, kv_heads=2, head_dim=64, kv_layers=0)
+    m8 = ModelSpec(id="m8", name="m8", params_b=1, layers=8, hidden_dim=256,
+                   attn_heads=4, kv_heads=2, head_dim=64, kv_layers=8)
+    assert estimate(_inp(m0)).max_kv_tokens == estimate(_inp(m8)).max_kv_tokens
+
+
 def test_kv_pool_dynamic():
     # pool capacity is computed and context-INDEPENDENT (vLLM fills util at startup)
     r = estimate(_inp(LLAMA3_8B))

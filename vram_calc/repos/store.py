@@ -124,6 +124,7 @@ def _dict_to_model(e: dict) -> ModelSpec:
         id=e["id"], name=e.get("name", e["id"]),
         params_b=e["params_b"], layers=e["layers"], hidden_dim=e["hidden_dim"],
         attn_heads=e["attn_heads"], kv_heads=e["kv_heads"], head_dim=e["head_dim"],
+        kv_layers=e.get("kv_layers", 0),
         vocab_size=e.get("vocab_size", 0), num_experts=e.get("num_experts", 0),
         expert_params_b=e.get("expert_params_b", 0.0),
         quantizations=tuple(e.get("quantizations", STANDARD_QUANTS)),
@@ -135,7 +136,7 @@ def _dict_to_model(e: dict) -> ModelSpec:
 def _model_to_dict(m: ModelSpec) -> dict:
     return {"id": m.id, "name": m.name, "params_b": m.params_b, "layers": m.layers,
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
-            "head_dim": m.head_dim, "vocab_size": m.vocab_size,
+            "head_dim": m.head_dim, "kv_layers": m.kv_layers, "vocab_size": m.vocab_size,
             "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
             "quantizations": list(STANDARD_QUANTS), "category": m.category, "quant": m.quant}
 
@@ -144,6 +145,8 @@ def _dict_to_gpu(e: dict) -> GpuSpec:
     return GpuSpec(id=e["id"], name=e.get("name", e["id"]), vram_gb=e["vram_gb"],
                    memory_bw_gbps=e.get("memory_bw_gbps", 0.0),
                    fp16_tflops=e.get("fp16_tflops", 0.0),
+                   architecture=e.get("architecture", ""),
+                   vendor=e.get("vendor", "nvidia"),
                    supports_fp8=e.get("supports_fp8", False),
                    supports_bf16=e.get("supports_bf16", True))
 
@@ -151,6 +154,7 @@ def _dict_to_gpu(e: dict) -> GpuSpec:
 def _gpu_to_dict(g: GpuSpec) -> dict:
     return {"id": g.id, "name": g.name, "vram_gb": g.vram_gb,
             "memory_bw_gbps": g.memory_bw_gbps, "fp16_tflops": g.fp16_tflops,
+            "architecture": g.architecture, "vendor": g.vendor,
             "supports_fp8": g.supports_fp8, "supports_bf16": g.supports_bf16}
 
 

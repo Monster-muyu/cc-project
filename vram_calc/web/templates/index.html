@@ -48,6 +48,7 @@
     <label>显卡数量 <input id="gpu_count" type="number" value="1" min="1" max="128"/>
     <p class="hint" id="parallel-hint">单卡部署。</p>
     <p class="hint warn" id="tp-warn" hidden></p>
+    <p class="hint warn" id="fp8-warn" hidden></p>
     <details>
       <summary class="hint">高级：自定义 TP / PP / EP 并行（改一个,其余自动联动使乘积 = 显卡数量）</summary>
       <div class="row">
@@ -103,7 +104,7 @@
     </select></label>
     <button id="mf-fetch">拉取解析</button>
     <div id="mf-fields" class="hidden grid2">
-      <p class="hint" style="grid-column:1/-1">解析结果（可编辑，确认后入库）：</p>
+      <p class="hint" style="grid-column:1/-1">解析结果（可编辑，确认后入库）。KV 层数填 0 = 全部层都有 KV；GDN 混合架构(Qwen3.8/Qwen3-Next)只有 full-attention 层有 KV，其余为固定状态，请核对填写。</p>
       <label>名称 <input id="mf-name"/></label>
       <label>参数量(B) <input id="mf-params" type="number"/></label>
       <label>层数 <input id="mf-layers" type="number"/></label>
@@ -111,6 +112,7 @@
       <label>注意力头数 <input id="mf-attn" type="number"/></label>
       <label>KV 头数 <input id="mf-kv" type="number"/></label>
       <label>头维度 <input id="mf-headdim" type="number"/></label>
+      <label>KV 层数 <input id="mf-kvlayers" type="number" value="0"/></label>
       <label>专家数(MoE) <input id="mf-experts" type="number" value="0"/></label>
       <label>专家参数(B) <input id="mf-expertparams" type="number" value="0"/></label>
     </div>
@@ -159,6 +161,6 @@
   </div>
 </div>
 
-<script src="/static/app.js?v=20"></script>
+<script src="/static/app.js?v=23"></script>
 </body>
 </html>

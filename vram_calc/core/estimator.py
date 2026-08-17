@@ -36,6 +36,10 @@ class ModelSpec:
     attn_heads: int
     kv_heads: int                # == attn_heads for plain MHA (non-GQA)
     head_dim: int
+    kv_layers: int = 0           # layers that HOLD a KV cache; 0 == all (pure attention).
+                                 # GDN/linear-attn hybrids (Qwen3.8/Next): only the
+                                 # full-attention layers grow with context; the
+                                 # recurrent layers use fixed-size state.
     vocab_size: int = 0
     num_experts: int = 0         # MoE only; 0 == dense
     expert_params_b: float = 0.0 # MoE: params living in experts (billions)
@@ -51,6 +55,8 @@ class GpuSpec:
     vram_gb: float
     memory_bw_gbps: float = 0.0
     fp16_tflops: float = 0.0
+    architecture: str = ""
+    vendor: str = "nvidia"
     supports_fp8: bool = False
     supports_bf16: bool = True
 
@@ -118,9 +124,10 @@ def estimate(inp: EstimateInput) -> Estimate:
     # vLLM does NOT pre-allocate this (pool fills gpu_memory_utilization at startup,
     # independent of max_model_len); it is shown so the total responds to inputs.
     # The pool's real capacity is max_kv_tokens, computed below.
+    kv_layers = m.kv_layers or m.layers    # GDN hybrid: only full-attn layers hold KV
     kv_heads_per_gpu = m.kv_heads / inp.tp
-    layers_per_gpu = m.layers / inp.pp
-    kv = (2 * layers_per_gpu * inp.context_len * kv_heads_per_gpu
+    kv_layers_per_gpu = kv_layers / inp.pp
+    kv = (2 * kv_layers_per_gpu * inp.context_len * kv_heads_per_gpu
           * m.head_dim * kvb * inp.concurrency) / GB * gpu_frac
 
     # --- transient prefill activation (GB) ---
@@ -144,7 +151,7 @@ def estimate(inp: EstimateInput) -> Estimate:
 
     # vLLM-style KV budget: VRAM left after FIXED weights+overhead+activation (per GPU),
     # pooled over the TP*PP cards that hold attention/KV (EP cards hold experts, not KV).
-    bpt = 2 * m.layers * m.kv_heads * m.head_dim * kvb   # bytes per KV token, full model
+    bpt = 2 * kv_layers * m.kv_heads * m.head_dim * kvb  # bytes per KV token, full model
     non_kv = weights + overhead + activation
     kv_budget_pg = max(usable - non_kv, 0.0)
     kv_pool_gb = kv_budget_pg * (inp.tp * inp.pp)

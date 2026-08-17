@@ -95,7 +95,9 @@ def api_models():
 
 @app.get("/api/gpus")
 def api_gpus():
-    return [{"id": g.id, "name": g.name, "vram_gb": g.vram_gb} for g in list_gpus()]
+    return [{"id": g.id, "name": g.name, "vram_gb": g.vram_gb,
+             "architecture": getattr(g, "architecture", ""),
+             "supports_fp8": g.supports_fp8} for g in list_gpus()]
 
 
 @app.post("/api/calc")
@@ -134,7 +136,7 @@ def api_sweep(req: CalcReq,
     # bytes per KV token (full model) -- sweep plots KV DEMAND vs KV BUDGET,
     # not resident VRAM (resident is context-independent in the pool model)
     kvb = bytes_per_kv(req.kv_quant)
-    bpt = 2 * m.layers * m.kv_heads * m.head_dim * kvb if m else 0
+    bpt = 2 * (m.kv_layers or m.layers) * m.kv_heads * m.head_dim * kvb if m else 0
     budget = base.kv_budget_gb
     # adaptive x-axis: solve budget/bpt for the REAL ceiling, then sweep a range
     # that comfortably brackets it (ceiling*1.3, capped at 4096) -- never a fixed 1..N
@@ -165,7 +167,7 @@ def api_model_preview(repo_id: str, category: str = "llm", source: str = "hf"):
         return JSONResponse({"error": f"拉取失败: {e}"}, status_code=400)
     return {"id": m.id, "name": m.name, "params_b": m.params_b, "layers": m.layers,
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
-            "head_dim": m.head_dim, "vocab_size": m.vocab_size,
+            "head_dim": m.head_dim, "kv_layers": m.kv_layers, "vocab_size": m.vocab_size,
             "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
             "category": m.category, "quant": m.quant}
 

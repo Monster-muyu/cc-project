@@ -34,6 +34,16 @@ def resolve_arch(config: dict) -> dict:
     head_dim = first("head_dim")
     if not head_dim and hidden and attn:
         head_dim = hidden // attn
+
+    # GDN / linear-attention hybrids (Qwen3.8, Qwen3-Next, ...) list per-layer
+    # attention types; only the full-attention layers hold a growing KV cache.
+    layer_types = target.get("layer_types")
+    kv_layers = 0
+    if isinstance(layer_types, list) and layer_types:
+        full = [t for t in layer_types if "attention" in t and "linear" not in t]
+        if 0 < len(full) < len(layer_types):   # hybrid confirmed; pure attn -> 0 (== all)
+            kv_layers = len(full)
+
     num_experts = first("num_local_experts", "num_experts", "n_routed_experts", default=0) or 0
     intermediate = first("moe_intermediate_size", "intermediate_size", default=0) or 0
 
@@ -47,6 +57,7 @@ def resolve_arch(config: dict) -> dict:
         "layers": layers, "hidden_dim": hidden, "attn_heads": attn,
         "kv_heads": kv, "head_dim": head_dim, "vocab_size": vocab,
         "num_experts": num_experts, "expert_params_b": round(expert_params_b, 2),
+        "kv_layers": kv_layers,
     }
 
 
