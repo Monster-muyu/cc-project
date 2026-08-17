@@ -1,0 +1,73 @@
+{
+  "source": "docs.vllm.ai (stable)",
+  "updated": "2026-08",
+  "categories": [
+    {
+      "id": "load",
+      "name": "模型加载",
+      "params": [
+        {"flag": "--model", "type": "str", "default": "必填", "desc": "模型名或路径：HF/ModelScope 仓库名，或本地权重目录", "tip": "私有/受限仓库需配 --hf-token", "modeled": false},
+        {"flag": "--served-model-name", "type": "str", "default": "None", "desc": "API 对外返回的模型名（客户端请求时用的名字）", "tip": "多模型网关/灰度切换时常用", "modeled": false},
+        {"flag": "--dtype", "type": "str", "default": "auto", "desc": "权重与计算精度：auto / float16 / bfloat16 / float32", "tip": "auto 跟随权重文件；显存紧张时 float16", "modeled": false},
+        {"flag": "--quantization / -q", "type": "str", "default": "None", "desc": "显式指定权重量化方案：awq / gptq / fp8 / gptq_marlin 等", "tip": "预量化仓库一般自动识别，无需手填", "modeled": false},
+        {"flag": "--max-model-len", "type": "int", "default": "模型上限", "desc": "单序列最大长度（输入+输出合计）。超过会直接拒绝请求", "tip": "截小它不省 KV 池（池大小由利用率决定），但能放宽启动检查", "modeled": true},
+        {"flag": "--revision", "type": "str", "default": "main", "desc": "拉取的模型版本/分支", "tip": "锁定 commit 可保证可复现", "modeled": false},
+        {"flag": "--hf-token", "type": "str", "default": "空", "desc": "HuggingFace 访问令牌（gated 模型必填）", "tip": "也可用环境变量 HF_TOKEN", "modeled": false},
+        {"flag": "--trust-remote-code", "type": "bool", "default": "False", "desc": "允许执行模型仓库自带的自定义代码", "tip": "自定义架构模型需要；仅信任可信来源", "modeled": false},
+        {"flag": "--download-dir", "type": "str", "default": "None", "desc": "权重下载缓存目录", "tip": "容器部署挂 volume 时指定", "modeled": false},
+        {"flag": "--load-format", "type": "str", "default": "auto", "desc": "权重加载格式：auto / safetensors / pt / gguf / dummy 等", "tip": "dummy 用于不载权重测显存布局", "modeled": false}
+      ]
+    },
+    {
+      "id": "mem",
+      "name": "显存与 KV 缓存",
+      "params": [
+        {"flag": "--gpu-memory-utilization", "type": "float", "default": "0.92", "desc": "引擎可用显存比例（权重+激活+KV 池全算在内，0~1）", "tip": "与其它进程共存时调低留余量；本计算器「显存利用率」即此参数", "modeled": true},
+        {"flag": "--kv-cache-dtype", "type": "str", "default": "auto", "desc": "KV 缓存精度：auto / float16 / bfloat16 / fp8 / fp8_inc", "tip": "fp8 使 KV 占用减半，轻微精度损失；本计算器「KV 量化」", "modeled": true},
+        {"flag": "--kv-cache-memory-bytes", "type": "int", "default": "None", "desc": "直接指定每卡 KV 池字节数（设置后优先于利用率推导）", "tip": "精确定容时用；一般留空让引擎自己算", "modeled": false},
+        {"flag": "--swap-space", "type": "int", "default": "4", "desc": "CPU 侧 KV 交换区大小（GB），抢占时换出用", "tip": "频繁抢占的场景适当调大；单位 GiB/每卡", "modeled": false},
+        {"flag": "--block-size", "type": "int", "default": "16", "desc": "分页 KV 的块大小（token 数）", "tip": "启动日志 CUDA blocks × 16 = 池容量，用于对账校准", "modeled": false},
+        {"flag": "--enable-prefix-caching", "type": "bool", "default": "True(V1)", "desc": "前缀缓存：相同前缀的请求共享 KV，省显存且大幅降首 token 延迟", "tip": "系统提示词固定/多轮对话场景收益极大", "modeled": false},
+        {"flag": "--max-seq-len-to-capture", "type": "int", "default": "8192", "desc": "CUDA graph 捕获的最大序列长度，超出部分回退非 graph 执行", "tip": "超长输出变慢时可调大，捕获显存开销随之增加", "modeled": false}
+      ]
+    },
+    {
+      "id": "sched",
+      "name": "批处理与调度",
+      "params": [
+        {"flag": "--max-num-seqs", "type": "int", "default": "256 / 1024*", "desc": "最大并发序列数。*默认随硬件：≤70G 卡 256，H100/MI300x 等 1024", "tip": "决定吞吐上限；受 KV 池容量约束（本计算器「并发」）", "modeled": true},
+        {"flag": "--max-num-batched-tokens", "type": "int", "default": "2048 / 8192*", "desc": "单步迭代 prefill+decode 的 token 预算。*API 服务：≤70G 卡 2048，大卡 8192", "tip": "调大→吞吐升、首 token 延迟升（本计算器「最大批处理」）", "modeled": true},
+        {"flag": "--enable-chunked-prefill", "type": "bool", "default": "默认开(V1)", "desc": "分块预填充：长 prompt 拆成多步处理，避免一步吃满算力", "tip": "长文档场景保持开启，可显著降低排队延迟", "modeled": false},
+        {"flag": "--max-logprobs", "type": "int", "default": "20", "desc": "单请求最多返回的对数概率数量", "tip": "Classifier/logprob 分析任务才需要调大", "modeled": false},
+        {"flag": "--disable-log-stats", "type": "bool", "default": "False", "desc": "关闭周期性日志统计输出", "tip": "生产环境日志降噪", "modeled": false}
+      ]
+    },
+    {
+      "id": "parallel",
+      "name": "并行与分布式",
+      "params": [
+        {"flag": "--tensor-parallel-size / -tp", "type": "int", "default": "1", "desc": "张量并行卡数：层内切分，权重/KV 均摊", "tip": "要求注意力头数能被 TP 整除（本计算器已做整除校验）", "modeled": true},
+        {"flag": "--pipeline-parallel-size / -pp", "type": "int", "default": "1", "desc": "流水线并行阶段数：按层切分，常用于跨节点", "tip": "无头数整除限制；阶段间有 bubble 开销", "modeled": true},
+        {"flag": "--data-parallel-size / -dp", "type": "int", "default": "1", "desc": "数据并行副本数（每副本是完整模型）", "tip": "提升吞吐不降单副本显存；本计算器按单副本估", "modeled": false},
+        {"flag": "--enable-expert-parallel", "type": "bool", "default": "False", "desc": "MoE 专家并行：专家权重分散到多卡", "tip": "MoE 模型降显存的关键开关（本计算器 EP）", "modeled": true},
+        {"flag": "--distributed-executor-backend", "type": "str", "default": "None", "desc": "分布式后端：mp（多进程）/ ray / external_launcher", "tip": "多机或复杂拓扑用 ray；单机默认 mp 即可", "modeled": false},
+        {"flag": "--nnodes / -n", "type": "int", "default": "1", "desc": "多机部署的总节点数", "tip": "配合 node-rank / master-addr 使用", "modeled": false},
+        {"flag": "--node-rank / -r", "type": "int", "default": "0", "desc": "当前节点在集群中的序号", "tip": "主节点 0，从节点依次递增", "modeled": false},
+        {"flag": "--master-addr / --master-port", "type": "str", "default": "自动", "desc": "多机主节点地址与端口", "tip": "仅从节点需要指定主节点地址", "modeled": false},
+        {"flag": "--max-parallel-loading-workers", "type": "int", "default": "None", "desc": "多卡加载权重的并行 worker 数", "tip": "大模型 TP 加载慢时调大；受带宽限制", "modeled": false}
+      ]
+    },
+    {
+      "id": "perf",
+      "name": "性能与其他",
+      "params": [
+        {"flag": "--enforce-eager", "type": "bool", "default": "False", "desc": "关闭 CUDA graph，逐算子即时执行", "tip": "排查问题/极限省显存时用，正常服务别开（明显变慢）", "modeled": false},
+        {"flag": "--seed", "type": "int", "default": "None", "desc": "采样随机种子", "tip": "评测对齐时固定", "modeled": false},
+        {"flag": "--enable-sleep-mode", "type": "bool", "default": "False", "desc": "空闲时释放 KV 池显存，请求到来再唤醒", "tip": "单卡多实例轮换服务时有用，唤醒有秒级延迟", "modeled": false},
+        {"flag": "--disable-sliding-window", "type": "bool", "default": "False", "desc": "关闭滑窗注意力，退化为全注意力", "tip": "验证正确性时用；显存可能暴涨", "modeled": false},
+        {"flag": "--tokenizer-pool-size", "type": "int", "default": "0", "desc": "tokenizer 进程池大小，0 为不开", "tip": "超高并发且 tokenizer 成瓶颈时启用", "modeled": false},
+        {"flag": "--port / --host", "type": "int/str", "default": "8000/空", "desc": "API 服务监听端口与地址", "tip": "容器内通常 0.0.0.0", "modeled": false}
+      ]
+    }
+  ]
+}

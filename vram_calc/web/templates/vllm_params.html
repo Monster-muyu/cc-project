@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>vLLM 常用参数手册 — VRAM 显存计算工具</title>
+  <link rel="stylesheet" href="/static/style.css?v=21"/>
+  <style>
+    .param-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 8px 0 22px; }
+    .param-table th { text-align: left; font-size: 11.5px; color: var(--muted); border-bottom: 2px solid var(--line); padding: 6px 8px; }
+    .param-table td { padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    .param-table td:first-child { white-space: nowrap; }
+    .flag { font-family: Consolas, monospace; font-weight: 600; color: #0d366b; }
+    .mono { font-family: Consolas, monospace; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+    .modeled { display: inline-block; font-size: 10px; background: #1baf7a; color: #fff; border-radius: 8px; padding: 1px 7px; margin-left: 5px; vertical-align: 1px; }
+    .tip { color: #8a6d1a; font-size: 11.5px; }
+    .manual h2 { margin: 26px 0 4px; font-size: 16px; }
+    .manual .src { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+  </style>
+</head>
+<body>
+<header>
+  <h1><a href="/" style="text-decoration:none;color:inherit">← 显存计算器</a> · vLLM 参数手册</h1>
+</header>
+<main class="manual" style="max-width:1080px;margin:0 auto;padding:14px 20px 60px">
+  <p class="hint">参数名与默认值核对自 <b>docs.vllm.ai (stable, 2026-08)</b>。默认值可能随硬件/版本变化，标注 * 的见说明。绿色「本计算器」徽标 = 该参数已参与显存估算，手册与计算器联动。</p>
+  {% for cat in data.categories %}
+  <h2>{{ cat.name }}</h2>
+  <div class="src">分类 ID: {{ cat.id }}</div>
+  <table class="param-table">
+    <thead><tr><th>参数</th><th>类型 / 默认值</th><th>说明</th><th>实践提示</th></tr></thead>
+    <tbody>
+      {% for p in cat.params %}
+      <tr>
+        <td><span class="flag">{{ p.flag }}</span>{% if p.modeled %}<span class="modeled">本计算器</span>{% endif %}</td>
+        <td class="mono">{{ p.type }}<br/>默认 {{ p.default }}</td>
+        <td>{{ p.desc }}</td>
+        <td class="tip">{{ p.tip }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+  <p class="hint">完整参数列表见官方文档：<a href="https://docs.vllm.ai/en/stable/serving/engine_args.html" target="_blank">Engine Arguments</a> ·
+  估算显存时不知道某参数怎么填？回<a href="/">计算器</a>选好模型/显卡，推荐配置会给出对应取值。</p>
+</main>
+</body>
+</html>

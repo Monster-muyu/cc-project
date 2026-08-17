@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+import json
+
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -67,6 +69,12 @@ def _estimate(req: CalcReq):
         ep=req.ep, kv_quant=req.kv_quant, cpu_offload=req.cpu_offload,
         safety_factor=req.safety_factor, exl2_bpw=req.exl2_bpw,
         max_num_batched_tokens=req.max_num_batched_tokens))
+
+
+@app.get("/vllm-params", response_class=HTMLResponse)
+async def vllm_params_page(request: Request):
+    data = json.loads((BASE.parent / "data" / "vllm_params.json").read_text(encoding="utf-8"))
+    return templates.TemplateResponse(request, "vllm_params.html", {"data": data})
 
 
 @app.get("/", response_class=HTMLResponse)
