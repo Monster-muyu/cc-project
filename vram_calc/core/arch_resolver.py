@@ -37,6 +37,9 @@ def resolve_arch(config: dict) -> dict:
 
     # GDN / linear-attention hybrids (Qwen3.8, Qwen3-Next, ...) list per-layer
     # attention types; only the full-attention layers hold a growing KV cache.
+    # Only `layer_types` (Qwen3.8/Next GDN convention) reliably marks attention kind.
+    # Jamba's `layers_block_type` marks FFN kind (dense/moe) — every layer there has
+    # attention, so it must NOT be used here.
     layer_types = target.get("layer_types")
     kv_layers = 0
     if isinstance(layer_types, list) and layer_types:
