@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.superpowers/
+docs/
+tests/
+.git/
+.playwright-mcp/
+README.md

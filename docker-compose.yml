@@ -1,0 +1,13 @@
+services:
+  vram-calc:
+    build: .
+    container_name: vram-calc
+    ports:
+      - "8000:8000"
+    volumes:
+      # user-added models/gpus persist across rebuilds (bundled data is in the image)
+      - vramcalc-data:/data
+    restart: unless-stopped
+
+volumes:
+  vramcalc-data:

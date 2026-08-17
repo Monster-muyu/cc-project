@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from ..core.estimator import ModelSpec, GpuSpec
@@ -15,7 +16,7 @@ from ..core.arch_resolver import resolve_arch, detect_quant
 
 PKG_DIR = Path(__file__).resolve().parent.parent          # .../vram_calc/
 BUNDLED_DIR = PKG_DIR / "data"
-USER_DIR = Path.home() / ".vram_calc"
+USER_DIR = Path(os.environ.get("VRAM_CALC_HOME", str(Path.home() / ".vram_calc")))
 
 STANDARD_QUANTS = ("fp16", "bf16", "fp8", "int8", "int4",
                    "gguf-q4_k_m", "gguf-q5_k_m", "gguf-q8_0", "exl2")
