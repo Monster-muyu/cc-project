@@ -71,10 +71,18 @@ def _estimate(req: CalcReq):
         max_num_batched_tokens=req.max_num_batched_tokens))
 
 
-@app.get("/vllm-params", response_class=HTMLResponse)
+@app.get("/vllm-manual", response_class=HTMLResponse)
 async def vllm_params_page(request: Request):
     data = json.loads((BASE.parent / "data" / "vllm_params.json").read_text(encoding="utf-8"))
     return templates.TemplateResponse(request, "vllm_params.html", {"data": data})
+
+
+# old path stuck in browsers' heuristic cache during the layout iterations --
+# new URL ships clean; old one 302s over
+@app.get("/vllm-params")
+async def vllm_params_redirect():
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse("/vllm-manual", status_code=302)
 
 
 @app.get("/", response_class=HTMLResponse)
