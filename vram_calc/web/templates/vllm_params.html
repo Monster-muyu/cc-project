@@ -6,11 +6,11 @@
   <title>vLLM 常用参数手册 — VRAM 显存计算工具</title>
   <link rel="stylesheet" href="/static/style.css?v=22"/>
   <style>
-    /* overrides: style.css global td rules (right-align/bold col2, right-align
-       last col) leak into this table — rescope everything here */
-    .layout { max-width: 1280px; margin: 0 auto; padding: 0 20px; display: grid;
-      grid-template-columns: 210px 1fr; gap: 30px; align-items: start; }
-    .toc { position: sticky; top: 14px; }
+    .layout { max-width: 1180px; margin: 0 auto; padding: 0 22px; display: grid;
+      grid-template-columns: 216px 1fr; gap: 34px; align-items: start; }
+
+    /* ---- sidebar nav ---- */
+    .toc { position: sticky; top: 16px; }
     .toc-box { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
       box-shadow: var(--shadow); padding: 12px 10px; }
     .toc-title { font-size: 11px; font-weight: 700; letter-spacing: 0.6px; text-transform: uppercase;
@@ -23,38 +23,43 @@
     .toc a .n { font-size: 11px; color: var(--muted); }
     .toc a.active .n { color: #d8e6f9; }
 
-    /* article flow: one category per chapter, full-width table under its heading */
-    .manual { min-width: 0; padding-bottom: 60px; }
-    .manual h1 { font-size: 21px; }
+    /* ---- article body: one chapter per category, one doc entry per param ---- */
+    .manual { min-width: 0; padding-bottom: 70px; }
+    .manual h1 { font-size: 22px; }
     .sum-strip { display: flex; gap: 26px; flex-wrap: wrap; align-items: center;
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
       box-shadow: var(--shadow); padding: 14px 20px; font-size: 13.5px; }
     .sum-strip b { font-size: 19px; color: var(--brand); margin-right: 4px; }
     .sum-strip .hint { margin-left: auto; }
-    .chapter { margin-top: 44px; scroll-margin-top: 14px; }
-    .chapter:first-of-type { margin-top: 26px; }
-    .chapter h2 { margin: 0 0 3px; font-size: 24px; font-weight: 800; letter-spacing: -0.3px;
+
+    .chapter { margin-top: 54px; scroll-margin-top: 16px; }
+    .chapter:first-of-type { margin-top: 30px; }
+    .chapter > h2 { margin: 0 0 4px; font-size: 25px; font-weight: 800; letter-spacing: -0.3px;
       display: flex; align-items: baseline; gap: 12px; }
-    .chapter h2 .no { font-size: 15px; font-weight: 700; color: var(--brand);
+    .chapter > h2 .no { font-size: 15px; font-weight: 700; color: var(--brand);
       font-variant-numeric: tabular-nums; }
-    .chapter h2 .count { font-size: 12px; font-weight: 600; color: var(--muted);
+    .chapter > h2 .count { font-size: 12px; font-weight: 600; color: var(--muted);
       background: #f0f1ee; border-radius: 10px; padding: 2px 10px; align-self: center; }
-    .chapter .lead { font-size: 13px; color: var(--muted); margin: 0 0 14px; padding-bottom: 12px;
+    .chapter .lead { font-size: 13px; color: var(--muted); margin: 0 0 6px; padding-bottom: 14px;
       border-bottom: 2px solid var(--border); }
 
-    .param-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; margin: 0; }
-    .param-table th { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
-      color: var(--ink-2); border-bottom: 2px solid var(--border); padding: 9px 10px; }
-    .param-table th:nth-child(1), .param-table td:nth-child(1) { width: 21%; }
-    .param-table th:nth-child(2), .param-table td:nth-child(2) { width: 15%; }
-    .param-table td { padding: 10px; border-bottom: 1px solid var(--grid); vertical-align: top;
-      text-align: left; font-weight: 400; color: var(--ink); line-height: 1.75; overflow-wrap: anywhere; }
-    .param-table tbody tr:hover { background: #eef4fc; }
-    .flag { font-family: Consolas, monospace; font-weight: 600; font-size: 13px; color: #0d366b; }
-    .mono { font-family: Consolas, monospace; font-size: 12.5px; color: var(--ink-2); }
+    /* one parameter = one doc entry */
+    .param { padding: 16px 0 14px; border-bottom: 1px solid var(--grid); }
+    .chapter .param:last-child { border-bottom: none; }
+    .param h3 { margin: 0 0 6px; font-family: Consolas, "Courier New", monospace;
+      font-size: 15.5px; font-weight: 700; color: #0d366b; display: flex; align-items: center;
+      flex-wrap: wrap; gap: 8px; }
+    .meta { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 8px; }
+    .meta .chip { font-family: Consolas, monospace; font-size: 11.5px; color: var(--ink-2);
+      background: #f0f1ee; border-radius: 6px; padding: 2px 8px; }
+    .meta .chip.def { color: #1c5f3f; background: #e7f3ec; }
+    .param .desc { margin: 0 0 8px; font-size: 13.5px; line-height: 1.85; color: var(--ink); }
+    .param .tipbox { margin: 0; font-size: 12.5px; line-height: 1.75; color: #6b5109;
+      background: #faf6e7; border-left: 3px solid #e3c25a; border-radius: 0 8px 8px 0;
+      padding: 8px 12px; }
     .modeled { display: inline-block; font-size: 11px; background: #1baf7a; color: #fff;
-      border-radius: 8px; padding: 2px 8px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
-    .tip { color: #6b5109; font-size: 12.5px; line-height: 1.7; }
+      border-radius: 8px; padding: 2px 8px; vertical-align: 2px; white-space: nowrap; }
+
     @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { position: static; } }
     @media print { .toc { display: none; } .layout { display: block; } }
   </style>
@@ -81,24 +86,22 @@
   </div>
   {% for cat in data.categories %}
   <section class="chapter" id="{{ cat.id }}">
-  <h2><span class="no">{{ '%02d' % loop.index }}</span>{{ cat.name }}<span class="count">{{ cat.params | length }} 项</span></h2>
-  <p class="lead">vLLM 启动参数 · {{ cat.name }}</p>
-  <table class="param-table">
-    <thead><tr><th>参数</th><th>类型 / 默认值</th><th>说明</th><th>实践提示</th></tr></thead>
-    <tbody>
-      {% for p in cat.params %}
-      <tr>
-        <td><span class="flag">{{ p.flag }}</span>{% if p.modeled %}<span class="modeled">本计算器</span>{% endif %}</td>
-        <td class="mono">{{ p.type }}<br/>默认 {{ p.default }}</td>
-        <td>{{ p.desc }}</td>
-        <td class="tip">{{ p.tip }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+    <h2><span class="no">{{ '%02d' % loop.index }}</span>{{ cat.name }}<span class="count">{{ cat.params | length }} 项</span></h2>
+    <p class="lead">vLLM 启动参数 · {{ cat.name }}</p>
+    {% for p in cat.params %}
+    <article class="param">
+      <h3>{{ p.flag }}{% if p.modeled %}<span class="modeled">本计算器</span>{% endif %}</h3>
+      <div class="meta">
+        <span class="chip">{{ p.type }}</span>
+        <span class="chip def">默认 {{ p.default }}</span>
+      </div>
+      <p class="desc">{{ p.desc }}</p>
+      <p class="tipbox">💡 {{ p.tip }}</p>
+    </article>
+    {% endfor %}
   </section>
   {% endfor %}
-  <p class="hint" style="margin-top:34px">完整参数列表见官方文档：<a href="https://docs.vllm.ai/en/stable/serving/engine_args.html" target="_blank">Engine Arguments</a> ·
+  <p class="hint" style="margin-top:36px">完整参数列表见官方文档：<a href="https://docs.vllm.ai/en/stable/serving/engine_args.html" target="_blank">Engine Arguments</a> ·
   估算显存时不知道某参数怎么填？回<a href="/">计算器</a>选好模型/显卡，推荐配置会给出对应取值。</p>
   </main>
 </div>
