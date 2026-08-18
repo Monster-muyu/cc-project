@@ -8,20 +8,33 @@
   <style>
     /* overrides: style.css global td rules (right-align/bold col2, right-align
        last col) leak into this table — rescope everything here */
-    .param-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 12.5px; margin: 8px 0 22px; }
-    .param-table th { text-align: left; font-size: 11.5px; color: var(--muted); border-bottom: 2px solid var(--grid); padding: 6px 8px; }
-    .param-table th:nth-child(1), .param-table td:nth-child(1) { width: 22%; }
-    .param-table th:nth-child(2), .param-table td:nth-child(2) { width: 13%; }
-    .param-table th:nth-child(3), .param-table td:nth-child(3) { width: 36%; }
-    .param-table td { padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: top;
-      text-align: left; font-weight: 400; color: var(--ink-2); line-height: 1.6; overflow-wrap: anywhere; }
-    .param-table td:first-child { color: var(--ink); }
-    .flag { font-family: Consolas, monospace; font-weight: 600; color: #0d366b; }
-    .mono { font-family: Consolas, monospace; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
-    .modeled { display: inline-block; font-size: 10px; background: #1baf7a; color: #fff; border-radius: 8px; padding: 1px 7px; margin-left: 5px; vertical-align: 1px; white-space: nowrap; }
-    .tip { color: #8a6d1a; font-size: 11.5px; }
-    .manual h2 { margin: 26px 0 4px; font-size: 16px; }
-    .manual .src { font-size: 11.5px; color: var(--muted); margin-bottom: 2px; }
+    .param-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; margin: 0; }
+    .param-table th { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
+      color: var(--ink-2); border-bottom: 2px solid var(--border); padding: 9px 10px; }
+    .param-table th:nth-child(1), .param-table td:nth-child(1) { width: 21%; }
+    .param-table th:nth-child(2), .param-table td:nth-child(2) { width: 15%; }
+    .param-table td { padding: 10px; border-bottom: 1px solid var(--grid); vertical-align: top;
+      text-align: left; font-weight: 400; color: var(--ink); line-height: 1.75; overflow-wrap: anywhere; }
+    .param-table tbody tr:nth-child(even) { background: #f7f8f6; }
+    .param-table tbody tr:hover { background: #eef4fc; }
+    .flag { font-family: Consolas, monospace; font-weight: 600; font-size: 13px; color: #0d366b; }
+    .mono { font-family: Consolas, monospace; font-size: 12.5px; color: var(--ink-2); }
+    .modeled { display: inline-block; font-size: 11px; background: #1baf7a; color: #fff;
+      border-radius: 8px; padding: 2px 8px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+    .tip { color: #6b5109; font-size: 12.5px; line-height: 1.7; }
+    .manual h1 { font-size: 21px; }
+    .manual h2 { margin: 0 0 4px; font-size: 17.5px; display: flex; align-items: center; gap: 10px; }
+    .manual h2::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: var(--brand); }
+    .manual h2 .count { font-size: 12px; font-weight: 600; color: var(--muted);
+      background: #f0f1ee; border-radius: 10px; padding: 2px 10px; }
+    .manual .src { font-size: 12px; color: var(--muted); margin: 0 0 10px 14px; }
+    .cat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: var(--shadow); padding: 18px 20px; margin-top: 18px; }
+    .sum-strip { display: flex; gap: 26px; flex-wrap: wrap; align-items: center;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      box-shadow: var(--shadow); padding: 14px 20px; margin-top: 18px; font-size: 13.5px; }
+    .sum-strip b { font-size: 19px; color: var(--brand); margin-right: 4px; }
+    .sum-strip .hint { margin-left: auto; }
   </style>
 </head>
 <body>
@@ -29,10 +42,15 @@
   <h1><a href="/" style="text-decoration:none;color:inherit">← 显存计算器</a> · vLLM 参数手册</h1>
 </header>
 <main class="manual" style="max-width:1080px;margin:0 auto;padding:14px 20px 60px">
-  <p class="hint">参数名与默认值核对自 <b>docs.vllm.ai (stable, 2026-08)</b>。默认值可能随硬件/版本变化，标注 * 的见说明。绿色「本计算器」徽标 = 该参数已参与显存估算，手册与计算器联动。</p>
+  <div class="sum-strip">
+    <span><b>{{ data.categories | length }}</b>分类</span>
+    <span><b>{{ data.categories | map(attribute='params') | map('length') | sum }}</b>参数</span>
+    <span><b>{{ data.categories | map(attribute='params') | sum(start=[]) | selectattr('modeled') | list | length }}</b>已接入计算器</span>
+    <span class="hint">核对自 docs.vllm.ai (stable, {{ data.updated }}) · 默认值随硬件/版本变化，标 * 见说明</span>
+  </div>
   {% for cat in data.categories %}
-  <h2>{{ cat.name }}</h2>
-  <div class="src">分类 ID: {{ cat.id }}</div>
+  <div class="cat-card">
+  <h2>{{ cat.name }}<span class="count">{{ cat.params | length }} 项</span></h2>
   <table class="param-table">
     <thead><tr><th>参数</th><th>类型 / 默认值</th><th>说明</th><th>实践提示</th></tr></thead>
     <tbody>
@@ -46,6 +64,7 @@
       {% endfor %}
     </tbody>
   </table>
+  </div>
   {% endfor %}
   <p class="hint">完整参数列表见官方文档：<a href="https://docs.vllm.ai/en/stable/serving/engine_args.html" target="_blank">Engine Arguments</a> ·
   估算显存时不知道某参数怎么填？回<a href="/">计算器</a>选好模型/显卡，推荐配置会给出对应取值。</p>
