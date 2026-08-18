@@ -23,9 +23,9 @@
     .toc a .n { font-size: 11px; color: var(--muted); }
     .toc a.active .n { color: #d8e6f9; }
     .manual { min-width: 0; padding-bottom: 60px; }
-    /* masonry: categories flow into 2 side-by-side columns */
-    .cat-flow { columns: 2; column-gap: 22px; }
-    .cat-flow .cat-card { break-inside: avoid; margin-top: 22px; }
+    /* kanban: each category is a vertical panel, panels side by side in a row */
+    .cat-flow { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 22px; margin-top: 22px; }
+    .cat-card { margin-top: 0; }
     .manual h1 { font-size: 21px; }
     .sum-strip { display: flex; gap: 26px; flex-wrap: wrap; align-items: center;
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
@@ -33,25 +33,27 @@
     .sum-strip b { font-size: 19px; color: var(--brand); margin-right: 4px; }
     .sum-strip .hint { margin-left: auto; }
     .cat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
-      box-shadow: var(--shadow); padding: 20px 22px; margin-top: 22px; scroll-margin-top: 14px; }
+      box-shadow: var(--shadow); padding: 16px 14px; scroll-margin-top: 14px; }
     .manual h2 { margin: 0 0 4px; font-size: 17.5px; display: flex; align-items: center; gap: 10px; }
     .manual h2::before { content: ""; width: 4px; height: 18px; border-radius: 2px; background: var(--brand); }
     .manual h2 .count { font-size: 12px; font-weight: 600; color: var(--muted);
       background: #f0f1ee; border-radius: 10px; padding: 2px 10px; }
-    .param-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 13.5px; margin: 10px 0 0; }
-    .param-table th { text-align: left; font-size: 12px; font-weight: 700; letter-spacing: 0.4px;
-      color: var(--ink-2); border-bottom: 2px solid var(--border); padding: 9px 10px; }
-    .param-table th:nth-child(1), .param-table td:nth-child(1) { width: 21%; }
-    .param-table th:nth-child(2), .param-table td:nth-child(2) { width: 15%; }
-    .param-table td { padding: 10px; border-bottom: 1px solid var(--grid); vertical-align: top;
-      text-align: left; font-weight: 400; color: var(--ink); line-height: 1.75; overflow-wrap: anywhere; }
+    .param-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin: 6px 0 0; }
+    .param-table thead { display: none; }   /* kanban panel: header row adds nothing */
+    .param-table tr { display: block; padding: 3px 2px; border-bottom: 1px solid var(--grid); border-radius: 8px; }
+    .param-table tr:last-child { border-bottom: none; }
+    .param-table td { display: block; padding: 0 4px; text-align: left; font-weight: 400;
+      color: var(--ink); line-height: 1.6; overflow-wrap: anywhere; border: none; }
     .param-table tbody tr:hover { background: #eef4fc; }
-    .flag { font-family: Consolas, monospace; font-weight: 600; font-size: 13px; color: #0d366b; }
-    .mono { font-family: Consolas, monospace; font-size: 12.5px; color: var(--ink-2); }
-    .modeled { display: inline-block; font-size: 11px; background: #1baf7a; color: #fff;
-      border-radius: 8px; padding: 2px 8px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
-    .tip { color: #6b5109; font-size: 12.5px; line-height: 1.7; }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { position: static; } .cat-flow { columns: 1; } }
+    .flag { font-family: Consolas, monospace; font-weight: 600; font-size: 12.5px; color: #0d366b;
+      display: inline-block; margin-bottom: 4px; }
+    .mono { font-family: Consolas, monospace; font-size: 11.5px; color: var(--ink-2);
+      display: block; margin-bottom: 4px; }
+    .modeled { display: inline-block; font-size: 10.5px; background: #1baf7a; color: #fff;
+      border-radius: 8px; padding: 1px 7px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+    .tip { color: #6b5109; font-size: 11.5px; line-height: 1.6; display: block; margin-top: 3px; }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { position: static; }
+      .cat-flow { grid-template-columns: 1fr; } }
     @media print { .toc { display: none; } .layout { display: block; } }
   </style>
 </head>
