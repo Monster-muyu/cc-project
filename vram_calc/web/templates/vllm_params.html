@@ -23,6 +23,9 @@
     .toc a .n { font-size: 11px; color: var(--muted); }
     .toc a.active .n { color: #d8e6f9; }
     .manual { min-width: 0; padding-bottom: 60px; }
+    /* masonry: categories flow into 2 side-by-side columns */
+    .cat-flow { columns: 2; column-gap: 22px; }
+    .cat-flow .cat-card { break-inside: avoid; margin-top: 22px; }
     .manual h1 { font-size: 21px; }
     .sum-strip { display: flex; gap: 26px; flex-wrap: wrap; align-items: center;
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
@@ -48,7 +51,7 @@
     .modeled { display: inline-block; font-size: 11px; background: #1baf7a; color: #fff;
       border-radius: 8px; padding: 2px 8px; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
     .tip { color: #6b5109; font-size: 12.5px; line-height: 1.7; }
-    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { position: static; } }
+    @media (max-width: 900px) { .layout { grid-template-columns: 1fr; } .toc { position: static; } .cat-flow { columns: 1; } }
     @media print { .toc { display: none; } .layout { display: block; } }
   </style>
 </head>
@@ -72,6 +75,7 @@
     <span><b>{{ data.categories | map(attribute='params') | sum(start=[]) | selectattr('modeled') | list | length }}</b>已接入计算器</span>
     <span class="hint">核对自 docs.vllm.ai (stable, {{ data.updated }}) · 默认值随硬件/版本变化，标 * 见说明</span>
   </div>
+  <div class="cat-flow">
   {% for cat in data.categories %}
   <div class="cat-card" id="{{ cat.id }}">
   <h2>{{ cat.name }}<span class="count">{{ cat.params | length }} 项</span></h2>
@@ -90,6 +94,7 @@
   </table>
   </div>
   {% endfor %}
+  </div>
   <p class="hint">完整参数列表见官方文档：<a href="https://docs.vllm.ai/en/stable/serving/engine_args.html" target="_blank">Engine Arguments</a> ·
   估算显存时不知道某参数怎么填？回<a href="/">计算器</a>选好模型/显卡，推荐配置会给出对应取值。</p>
   </main>
