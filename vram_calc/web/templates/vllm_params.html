@@ -82,7 +82,7 @@
     <span><b>{{ data.categories | length }}</b>分类</span>
     <span><b>{{ data.categories | map(attribute='params') | map('length') | sum }}</b>参数</span>
     <span><b>{{ data.categories | map(attribute='params') | sum(start=[]) | selectattr('modeled') | list | length }}</b>已接入计算器</span>
-    <span class="hint">核对自 docs.vllm.ai (stable, {{ data.updated }}) · 默认值随硬件/版本变化，标 * 见说明</span>
+    <span class="hint">版式 v4 · 核对自 docs.vllm.ai (stable, {{ data.updated }}) · 默认值随硬件/版本变化，标 * 见说明</span>
   </div>
   {% for cat in data.categories %}
   <section class="chapter" id="{{ cat.id }}">
