@@ -4,7 +4,7 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>VRAM 显存计算工具</title>
-  <link rel="stylesheet" href="/static/style.css?v=15"/>
+  <link rel="stylesheet" href="/static/style.css?v=23"/>
 </head>
 <body>
 <header>
@@ -13,8 +13,12 @@
       <h1>显存计算工具</h1>
       <span class="sub">估算部署 LLM 所需显存</span>
     </div>
-    <div class="actions">
-      <a href="/vllm-manual" style="text-decoration:none"><button title="vLLM 常用参数中文手册(核对自官方文档)">📖 vLLM 参数</button></a>
+    <nav class="tabs">
+      <a href="/" class="on">计算器</a>
+      <span class="soon" title="设计中，本期实现">多机规划</span>
+      <a href="/vllm-manual">vLLM 参数</a>
+    </nav>
+    <div class="actions" style="margin-left:auto">
       <button id="btn-add-model">＋ 添加模型</button>
       <button id="btn-bulk-model">批量导入</button>
       <button id="btn-add-gpu">＋ 添加显卡</button>
@@ -24,7 +28,7 @@
 
 <main>
   <section class="card panel-left">
-    <h2>选择参数</h2>
+    <h2>🎛 选择参数</h2>
     <div class="cat-filter" id="cat-filter"></div>
     <label>模型 <select id="model"></select></label>
     <label>量化 <select id="quant">
@@ -74,12 +78,12 @@
   <section class="card panel-right">
     <div id="verdict" class="verdict">加载中…</div>
     <div id="kv-capacity" class="kv-box"></div>
-    <h3>显存占用 vs 容量</h3>
+    <h3>📊 显存占用 vs 容量</h3>
     <div id="chart-capacity"></div>
-    <h3>组成分解</h3>
+    <h3>🧱 组成分解</h3>
     <div id="chart-breakdown"></div>
     <div id="breakdown-table"></div>
-    <h3>并发敏感度 —— 其它参数固定,横轴扫并发数:KV需求(上下文×并发)撞"KV预算"线处 = 最多可承载并发</h3>
+    <h3>📈 并发敏感度 —— 其它参数固定,横轴扫并发数:KV需求(上下文×并发)撞"KV预算"线处 = 最多可承载并发</h3>
     <div id="chart-sweep"></div>
   </section>
 </main>
