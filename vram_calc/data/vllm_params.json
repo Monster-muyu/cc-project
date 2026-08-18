@@ -15,7 +15,9 @@
         {"flag": "--hf-token", "type": "str", "default": "空", "desc": "HuggingFace 访问令牌（gated 模型必填）", "tip": "也可用环境变量 HF_TOKEN", "modeled": false},
         {"flag": "--trust-remote-code", "type": "bool", "default": "False", "desc": "允许执行模型仓库自带的自定义代码", "tip": "自定义架构模型需要；仅信任可信来源", "modeled": false},
         {"flag": "--download-dir", "type": "str", "default": "None", "desc": "权重下载缓存目录", "tip": "容器部署挂 volume 时指定", "modeled": false},
-        {"flag": "--load-format", "type": "str", "default": "auto", "desc": "权重加载格式：auto / safetensors / pt / gguf / dummy 等", "tip": "dummy 用于不载权重测显存布局", "modeled": false}
+        {"flag": "--load-format", "type": "str", "default": "auto", "desc": "权重加载格式：auto / safetensors / pt / gguf / dummy 等", "tip": "dummy 用于不载权重测显存布局", "modeled": false},
+        {"flag": "--tokenizer", "type": "str", "default": "同模型", "desc": "分词器路径或仓库名，缺省与 --model 相同", "tip": "换词表/加特殊 token 实验时用", "modeled": false},
+        {"flag": "--config-format", "type": "str", "default": "auto", "desc": "配置文件格式：auto / hf / mistral / gguf", "tip": "GGUF 权重配套 gguf 格式配置", "modeled": false}
       ]
     },
     {
@@ -28,7 +30,8 @@
         {"flag": "--swap-space", "type": "int", "default": "4", "desc": "CPU 侧 KV 交换区大小（GB），抢占时换出用", "tip": "频繁抢占的场景适当调大；单位 GiB/每卡", "modeled": false},
         {"flag": "--block-size", "type": "int", "default": "16", "desc": "分页 KV 的块大小（token 数）", "tip": "启动日志 CUDA blocks × 16 = 池容量，用于对账校准", "modeled": false},
         {"flag": "--enable-prefix-caching", "type": "bool", "default": "True(V1)", "desc": "前缀缓存：相同前缀的请求共享 KV，省显存且大幅降首 token 延迟", "tip": "系统提示词固定/多轮对话场景收益极大", "modeled": false},
-        {"flag": "--max-seq-len-to-capture", "type": "int", "default": "8192", "desc": "CUDA graph 捕获的最大序列长度，超出部分回退非 graph 执行", "tip": "超长输出变慢时可调大，捕获显存开销随之增加", "modeled": false}
+        {"flag": "--max-seq-len-to-capture", "type": "int", "default": "8192", "desc": "CUDA graph 捕获的最大序列长度，超出部分回退非 graph 执行", "tip": "超长输出变慢时可调大，捕获显存开销随之增加", "modeled": false},
+        {"flag": "--cpu-offload-gb", "type": "float", "default": "0.0", "desc": "把 N GB 权重换出到 CPU 内存（每卡），腾出对应显存给 KV", "tip": "显存差一口气时的救命稻草，代价是明显变慢（本计算器「CPU offload」）", "modeled": true}
       ]
     },
     {
@@ -39,7 +42,19 @@
         {"flag": "--max-num-batched-tokens", "type": "int", "default": "2048 / 8192*", "desc": "单步迭代 prefill+decode 的 token 预算。*API 服务：≤70G 卡 2048，大卡 8192", "tip": "调大→吞吐升、首 token 延迟升（本计算器「最大批处理」）", "modeled": true},
         {"flag": "--enable-chunked-prefill", "type": "bool", "default": "默认开(V1)", "desc": "分块预填充：长 prompt 拆成多步处理，避免一步吃满算力", "tip": "长文档场景保持开启，可显著降低排队延迟", "modeled": false},
         {"flag": "--max-logprobs", "type": "int", "default": "20", "desc": "单请求最多返回的对数概率数量", "tip": "Classifier/logprob 分析任务才需要调大", "modeled": false},
-        {"flag": "--disable-log-stats", "type": "bool", "default": "False", "desc": "关闭周期性日志统计输出", "tip": "生产环境日志降噪", "modeled": false}
+        {"flag": "--disable-log-stats", "type": "bool", "default": "False", "desc": "关闭周期性日志统计输出", "tip": "生产环境日志降噪", "modeled": false},
+        {"flag": "--scheduler-delay-factor", "type": "float", "default": "0.0", "desc": "调度器延迟因子：为凑更大批故意等待的倍数", "tip": "0.2~0.5 可提升吞吐，代价是排队延迟；对延迟敏感保持 0", "modeled": false}
+      ]
+    },
+    {
+      "id": "tools",
+      "name": "工具调用与解析",
+      "params": [
+        {"flag": "--enable-auto-tool-choice", "type": "bool", "default": "False", "desc": "开启 OpenAI 风格自动工具调用（function calling）：请求带 tools 时模型自动决定调用", "tip": "必须同时配 --tool-call-parser，且模型本身经过工具调用训练", "modeled": false},
+        {"flag": "--tool-call-parser", "type": "str", "default": "None", "desc": "工具调用解析器：把模型生成解析成 tool_calls 字段。常用：hermes / qwen3 / llama3_json / mistral / deepseek_v3 / granite / pythonic", "tip": "解析器必须与模型匹配，选错会报解析失败或工具调用为空", "modeled": false},
+        {"flag": "--reasoning-parser", "type": "str", "default": "None", "desc": "思考链解析器：把推理段（如 <think>…</think>）剥离到 reasoning_content 字段。常用：deepseek_r1 / qwen3 / glm45", "tip": "推理模型建议配置，否则思考内容会混在正文返回给客户端", "modeled": false},
+        {"flag": "--tool-parser-token-format", "type": "str", "default": "auto", "desc": "流式返回时工具调用增量的格式：auto / strings / content / indices", "tip": "一般默认即可；个别前端框架对增量格式有硬性要求", "modeled": false},
+        {"flag": "--chat-template", "type": "str", "default": "模型自带", "desc": "自定义 chat 模板路径（Jinja2），覆盖模型自带模板", "tip": "改模板会改变工具调用标记格式，动它之前先确认 parser 匹配", "modeled": false}
       ]
     },
     {
@@ -66,6 +81,10 @@
         {"flag": "--enable-sleep-mode", "type": "bool", "default": "False", "desc": "空闲时释放 KV 池显存，请求到来再唤醒", "tip": "单卡多实例轮换服务时有用，唤醒有秒级延迟", "modeled": false},
         {"flag": "--disable-sliding-window", "type": "bool", "default": "False", "desc": "关闭滑窗注意力，退化为全注意力", "tip": "验证正确性时用；显存可能暴涨", "modeled": false},
         {"flag": "--tokenizer-pool-size", "type": "int", "default": "0", "desc": "tokenizer 进程池大小，0 为不开", "tip": "超高并发且 tokenizer 成瓶颈时启用", "modeled": false},
+        {"flag": "--limit-mm-per-prompt", "type": "dict", "default": "各模态 1", "desc": "多模态请求单条允许的媒体数量上限，如 {\"image\": 3}（多图/多视频输入必调）", "tip": "多模态模型的激活显存随媒体数增长，别放开太多", "modeled": false},
+        {"flag": "--api-key", "type": "str", "default": "None", "desc": "API 访问密钥，请求需带 Authorization 头", "tip": "服务暴露到内网/公网时必配", "modeled": false},
+        {"flag": "--allowed-origins", "type": "str", "default": "None", "desc": "CORS 允许的源，逗号分隔多个", "tip": "浏览器页面直连 API 时需要，否则跨域被拦", "modeled": false},
+        {"flag": "--ssl-certfile / --ssl-keyfile", "type": "str", "default": "None", "desc": "HTTPS 证书与私钥路径", "tip": "内网用自签证书即可", "modeled": false},
         {"flag": "--port / --host", "type": "int/str", "default": "8000/空", "desc": "API 服务监听端口与地址", "tip": "容器内通常 0.0.0.0", "modeled": false}
       ]
     }
