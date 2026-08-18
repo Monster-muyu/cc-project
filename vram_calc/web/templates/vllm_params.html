@@ -24,7 +24,9 @@
     .toc a.active .n { color: #d8e6f9; }
 
     /* ---- article body: one chapter per category, one doc entry per param ---- */
-    .manual { min-width: 0; padding-bottom: 70px; }
+    /* style.css styles bare `main` as the calculator's 320px+1fr grid -- override
+       it here or chapters get dealt into two columns */
+    .manual { display: block; min-width: 0; padding-bottom: 70px; }
     .manual h1 { font-size: 22px; }
     .sum-strip { display: flex; gap: 26px; flex-wrap: wrap; align-items: center;
       background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
