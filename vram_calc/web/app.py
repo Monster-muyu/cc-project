@@ -29,10 +29,10 @@ app.mount("/static", StaticFiles(directory=str(BASE / "static")), name="static")
 
 @app.middleware("http")
 async def no_cache(request, call_next):
-    """Dev server: never let the browser cache HTML or static assets.
-    Recurring 'fix not visible' reports were stale-JS caches every time."""
+    """Dev server: never let the browser cache HTML pages or static assets.
+    Recurring 'fix not visible' reports were stale caches every time."""
     resp = await call_next(request)
-    if request.url.path.startswith("/static") or request.url.path == "/":
+    if request.url.path.startswith("/static") or "text/html" in resp.headers.get("content-type", ""):
         resp.headers["Cache-Control"] = "no-cache, must-revalidate"
     return resp
 
