@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 
 from ..core.estimator import ModelSpec, GpuSpec
+from ..core.cluster import ServerSpec, GpuCount
 from ..core.arch_resolver import resolve_arch, detect_quant
 
 PKG_DIR = Path(__file__).resolve().parent.parent          # .../vram_calc/
@@ -116,6 +117,30 @@ def get_gpu(gid: str) -> GpuSpec | None:
 
 def save_gpu(g: GpuSpec) -> Path:
     return gpus.save(_gpu_to_dict(g))
+
+
+# ---- servers ----
+servers = EntityStore("servers.json", "servers")
+
+
+def list_servers() -> list[ServerSpec]:
+    return [_dict_to_server(e) for e in servers.list()]
+
+
+def get_server(sid: str) -> ServerSpec | None:
+    e = servers.get(sid)
+    return _dict_to_server(e) if e else None
+
+
+def save_server(s: ServerSpec) -> Path:
+    return servers.save({"id": s.id, "name": s.name, "host": s.host,
+                         "gpus": [{"gpu_id": g.gpu_id, "count": g.count} for g in s.gpus]})
+
+
+def _dict_to_server(e: dict) -> ServerSpec:
+    return ServerSpec(id=e["id"], name=e.get("name", e["id"]),
+                      host=e.get("host", ""),
+                      gpus=tuple(GpuCount(**g) for g in e.get("gpus", [])))
 
 
 # ---- conversions ----
