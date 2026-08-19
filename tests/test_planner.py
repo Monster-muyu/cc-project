@@ -7,6 +7,7 @@ M8B = ModelSpec(id="t/8b", name="8B", params_b=8.0, layers=32, hidden_dim=4096,
                 attn_heads=32, kv_heads=8, head_dim=128)
 G24 = GpuSpec(id="g24", name="24G", vram_gb=24)
 G12 = GpuSpec(id="g12", name="12G", vram_gb=12)
+G8 = GpuSpec(id="g8", name="8G", vram_gb=8)
 
 def mach(sid, gpu, n): return Machine(sid, sid, "", gpu, n)
 
@@ -80,3 +81,10 @@ def test_nothing_fits_returns_over_plan():
 def test_fp8_kv_on_unsupported_gpu_warns():
     plans = plan_deployment(pin(kv_quant="fp8"))
     assert plans and plans[0].warnings              # G24 未声明 supports_fp8 → 警告
+
+
+def test_tp_cross_gpus_used_per_machine():
+    # G8 2+2：单机/DP 放不下(8GB卡) → tp_cross 进前列；G12 时排第4被[:3]截断测不到
+    plans = plan_deployment(pin(machines=(mach("a", G8, 2), mach("b", G8, 2))))
+    tc = [p for p in plans if p.key == "tp_cross"]
+    assert tc and all(r.gpus_used == 2 for r in tc[0].rows)   # 每机 2 张，不是 tp=4

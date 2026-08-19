@@ -111,7 +111,8 @@ def _eval_candidate(c: Candidate, inp: PlanInput) -> Plan:
             kv_quant=inp.kv_quant, safety_factor=inp.gpu_util,
             max_num_batched_tokens=inp.max_num_batched_tokens))
         b = est.breakdown
-        rows.append(LedgerRow(mach_.server_id, mach_.name, mach_.gpu.name, c.tp,
+        rows.append(LedgerRow(mach_.server_id, mach_.name, mach_.gpu.name,
+                              c.tp if c.category != "tp_cross" else mach_.count,
                               round(b.weights, 2), round(b.overhead, 2),
                               round(b.activation, 2), round(est.kv_budget_gb, 2),
                               round(b.total, 2), round(est.usable_gb, 2), est.verdict))
@@ -122,13 +123,13 @@ def _eval_candidate(c: Candidate, inp: PlanInput) -> Plan:
             warns.append(f"{mach_.name}（{mach_.gpu.name}）无 FP8 硬件，vLLM 将拒绝启动 FP8 KV")
     req_tokens = inp.context_len * conc_rp
     head = rows[0]
-    why = (f"权重 TP={c.tp} 后每卡 {head.weights_gb:.1f}GB，加开销后每卡剩 "
-           f"{head.kv_budget_gb:.1f}GB KV 池；本次需求 {req_tokens} tokens"
+    why = (f"权重 TP={c.tp} 后每卡 {head.weights_gb:.1f}GB，加开销后全实例 KV 池共 "
+           f"{head.kv_budget_gb:.1f}GB；本次需求 {req_tokens} tokens"
            f"（池容量 {min_kv}）")
     if c.category == "single":
         why = "单机放得下就不跨机——跨机 TP/PP 都有网络惩罚。" + why
     elif c.category == "dp":
-        why = f"{dp} 个独立副本各承担一半流量，总吞吐 ≈ {dp}×，副本间无需互联。" + why
+        why = f"{dp} 个独立副本各承担 1/{dp} 流量，总吞吐 ≈ {dp}×，副本间无需互联。" + why
     elif c.category == "pp":
         why = "多机拼一个大实例：KV 池总量更大（单序列可更长），代价是 PP 跨机 bubble、吞吐低于 DP。" + why
     else:
