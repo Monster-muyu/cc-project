@@ -144,12 +144,12 @@ function finalize(card, s) {
         ` · 占用 <b>${r.per_gpu_total_gb} GB</b>/可用 <b>${r.usable_gb} GB</b>（每卡）· KV 池 <b>${r.kv_pool_tokens}</b> tokens（估算引擎）</div>`);
     } catch {}
   }
-  if (location.pathname === "/" && document.getElementById("model"))
+  if (location.pathname === "/" && document.getElementById("model") && card.el.querySelector("pre"))
     card.el.insertAdjacentHTML("beforeend",
       `<div class="dr-actions"><button class="btn primary" onclick="window.__ai_apply(this)">⚡ 应用到本页</button></div>`);
 }
 window.__ai_apply = btn => {
-  const pre = btn.closest(".msg-ai").querySelector("pre");
+  const pre = [...btn.closest(".msg-ai").querySelectorAll("pre")].pop();
   const cmd = pre ? pre.textContent : "";
   const grab = re => { const x = cmd.match(re); return x ? x[1] : null; };
   const setv = (id, v) => { const el = document.getElementById(id);
