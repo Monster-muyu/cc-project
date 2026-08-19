@@ -66,9 +66,10 @@ class OpenAIProvider(LLMProvider):
 
     def chat_stream(self, messages, tools):
         client = self._client()
-        resp = client.chat.completions.create(
-            model=self.cfg.model, messages=messages, stream=True,
-            tools=[{"type": "function", "function": t} for t in tools])
+        kw = {"model": self.cfg.model, "messages": messages, "stream": True}
+        if tools:                                  # 空 tools 数组两家 API 都 400
+            kw["tools"] = [{"type": "function", "function": t} for t in tools]
+        resp = client.chat.completions.create(**kw)
         buf: dict[int, dict] = {}                 # tool_call index -> {name, args}
         for chunk in resp:
             if not chunk.choices:
@@ -143,10 +144,12 @@ class AnthropicProvider(LLMProvider):
         sys_texts, convo = split_system(messages)
         a_tools = [{"name": t["name"], "description": t["description"],
                     "input_schema": t["parameters"]} for t in tools]
-        with client.messages.stream(model=self.cfg.model,
-                                    system="\n\n".join(sys_texts) or None,
-                                    messages=convo, tools=a_tools,
-                                    max_tokens=4096) as stream:
+        kw = {"model": self.cfg.model,
+              "system": "\n\n".join(sys_texts) or None,
+              "messages": convo, "max_tokens": 4096}
+        if tools:                                  # 空 tools 数组两家 API 都 400
+            kw["tools"] = a_tools
+        with client.messages.stream(**kw) as stream:
             for ev in stream:
                 if ev.type == "content_block_delta" and ev.delta.type == "text_delta":
                     yield TextDelta(ev.delta.text)
