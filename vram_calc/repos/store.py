@@ -82,6 +82,13 @@ class EntityStore:
                         encoding="utf-8")
         return path
 
+    def delete(self, entity_id: str) -> bool:
+        p = self.user_dir / f"{_safe(entity_id)}.json"
+        if p.exists():
+            p.unlink()
+            return True
+        return False
+
 
 def _safe(s: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in s)
@@ -135,6 +142,10 @@ def get_server(sid: str) -> ServerSpec | None:
 def save_server(s: ServerSpec) -> Path:
     return servers.save({"id": s.id, "name": s.name, "host": s.host,
                          "gpus": [{"gpu_id": g.gpu_id, "count": g.count} for g in s.gpus]})
+
+
+def delete_server(sid: str) -> bool:
+    return servers.delete(sid)
 
 
 def _dict_to_server(e: dict) -> ServerSpec:

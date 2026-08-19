@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Literal
+from dataclasses import asdict
 
 import json
 
@@ -16,9 +17,13 @@ from pydantic import BaseModel
 from ..core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate
 from ..core.engines import ENGINES
 from ..core.quant import QUANT_BYTES, bytes_per_kv
+from ..core.cluster import ServerSpec, GpuCount, server_is_mixed
+from ..core.planner import Machine, PlanInput, plan_deployment
+from ..core.commands import render_commands
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
                      save_model, save_gpu, fetch_model_preview, fetch_and_save_many,
-                     fetch_modelscope, infer_quant_from_id)
+                     fetch_modelscope, infer_quant_from_id,
+                     list_servers, get_server, save_server, delete_server)
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -208,6 +213,74 @@ def api_bulk_models(payload: dict):
         repo_ids = repo_ids.splitlines()
     return fetch_and_save_many(repo_ids, category=payload.get("category", "llm"),
                                source=payload.get("source", "hf"))
+
+
+class PlanReq(BaseModel):
+    model_id: str
+    server_ids: list[str]
+    context_len: int = 4096
+    concurrency: int = 1
+    quant: str = "fp16"
+    kv_quant: str = "fp16"
+    gpu_util: float = 0.9
+    max_num_batched_tokens: int = 8192
+
+
+@app.get("/api/servers")
+def api_servers():
+    return [{"id": s.id, "name": s.name, "host": s.host,
+             "gpus": [{"gpu_id": g.gpu_id, "count": g.count} for g in s.gpus],
+             "mixed": server_is_mixed(s)} for s in list_servers()]
+
+
+@app.post("/api/servers")
+def api_save_server(spec: dict):
+    try:
+        s = ServerSpec(id=spec["id"], name=spec.get("name", spec["id"]),
+                       host=spec.get("host", ""),
+                       gpus=tuple(GpuCount(**g) for g in spec.get("gpus", [])))
+        save_server(s)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return {"ok": True, "id": s.id}
+
+
+@app.delete("/api/servers/{sid}")
+def api_del_server(sid: str):
+    deleted = delete_server(sid)
+    return {"ok": deleted}
+
+
+@app.post("/api/plan")
+def api_plan(req: PlanReq):
+    m = get_model(req.model_id)
+    if m is None:
+        return JSONResponse({"error": f"未知模型: {req.model_id}"}, status_code=400)
+    machines, warnings = [], []
+    for sid in req.server_ids:
+        s = get_server(sid)
+        if s is None:
+            return JSONResponse({"error": f"未知服务器: {sid}"}, status_code=400)
+        if server_is_mixed(s):
+            warnings.append(f"{s.name} 机内混插 GPU，v1 不参与规划（vLLM 不支持混型号 TP）")
+            continue
+        g = get_gpu(s.gpus[0].gpu_id)
+        if g is None:
+            warnings.append(f"{s.name} 的 GPU {s.gpus[0].gpu_id} 不在显卡库，已跳过")
+            continue
+        machines.append(Machine(s.id, s.name, s.host, g, s.gpus[0].count))
+    plans = plan_deployment(PlanInput(
+        model=m, machines=tuple(machines), context_len=req.context_len,
+        concurrency=req.concurrency, quant=req.quant, kv_quant=req.kv_quant,
+        gpu_util=req.gpu_util,
+        max_num_batched_tokens=req.max_num_batched_tokens)) if machines else []
+    out = []
+    for p in plans:
+        d = asdict(p)
+        d["commands"] = [asdict(b) for b in render_commands(
+            p, req.model_id, req.context_len, req.concurrency, req.gpu_util, req.kv_quant)]
+        out.append(d)
+    return {"plans": out, "warnings": warnings}
 
 
 if __name__ == "__main__":
