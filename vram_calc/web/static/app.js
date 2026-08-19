@@ -204,6 +204,7 @@ async function recalc() {
   const r = await fetch("/api/calc", opt).then((r) => r.json());
   if (r.error) { $id("verdict").textContent = r.error; return; }
   renderResult(r);
+  window.__lastCalc = r;
   const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1", opt).then((r) => r.json());
   if (!s.error) $id("chart-sweep").innerHTML = sweepChart(s, "并发数");
 }
@@ -427,3 +428,6 @@ $id("gf-save").onclick = async () => {
 };
 
 init();
+window.__assistant_ctx = () => ({
+  kind: "calc", input: currentInput(), last_result: window.__lastCalc || null,
+});

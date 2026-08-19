@@ -2,6 +2,7 @@
 let servers = [], models = [], gpus = [];
 const selected = new Set();
 let deb = null;
+let lastPlan = null;
 
 async function init() {
   [servers, models, gpus] = await Promise.all([
@@ -71,6 +72,7 @@ async function runPlan() {
     concurrency: Math.max(1, +$("#p-conc").value || 1),
     quant: $("#p-quant").value, kv_quant: $("#p-kvquant").value,
     gpu_util: +$("#p-util").value});
+  lastPlan = r;
   renderPlans(r);
 }
 
@@ -151,3 +153,11 @@ async function saveSrv() {
 }
 
 init();
+window.__assistant_ctx = () => ({
+  kind: "plan",
+  servers: servers.filter(s => selected.has(s.id)).map(s => ({id: s.id, name: s.name, gpus: s.gpus})),
+  goal: {model_id: $("#p-model").value, context_len: parseContext($("#p-ctx").value) || 4096,
+         concurrency: Math.max(1, +$("#p-conc").value || 1), quant: $("#p-quant").value,
+         kv_quant: $("#p-kvquant").value, gpu_util: +$("#p-util").value},
+  last_plans: lastPlan,
+});
