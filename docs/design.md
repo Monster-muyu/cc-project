@@ -1,6 +1,9 @@
 # VRAM 显存计算工具 — 设计文档
 
-> 版本: v2.0 · 状态: 已实现(与代码同步) · 初稿 2026-08-13 · 同步 2026-08-15
+> 版本: v2.1 · 状态: 已实现(与代码同步) · 初稿 2026-08-13 · 同步 2026-08-19
+> v2.1 变更: 新增**多机规划**(见 §15):ServerSpec 服务器实体 + EntityStore 泛化存储、
+> planner 枚举四类候选(单机/DP/跨机PP/跨机TP)并评分取 top3、commands 生成启动命令、
+> `/api/plan` 与 `/plan` 页面。
 > v2.0 变更: KV 改 vLLM 分页池模型(动态预算/max_kv_tokens);verdict 改三档真实语义
 > (OOM=权重放不下 / 能跑·会限流=负载超池子 / 放得下);参数新增 max_num_batched_tokens
 > 与显存利用率(gpu_memory_utilization);模型源新增 ModelScope;UI 新增并发↔上下文推荐、
@@ -358,3 +361,27 @@ Python 3.11+，conda 环境 `vram-calc`。
 - 确定激活公式默认系数
 - 验证 `model_info().safetensors` 的精确属性访问路径
 - 人工填充精选基准：~30-50 个热门模型架构字段（含若干 MoE 的 `expert_params`）
+
+## 15. 多机规划（v2.1）
+
+回答"手头这几台服务器怎么部署某个模型"。四个新模块 + 一页一 API，复用 `estimate()` 做逐机评分。
+
+**数据模型**（`core/cluster.py`）：`ServerSpec(id, name, host, gpus=[(gpu_id, count)])`——
+gpus 是列表，混插机型天然可表达；`server_is_mixed()` 判定后**规划期跳过**（vLLM 不支持混型号 TP），
+数据模型不留迁移坑。存储走泛化后的 `repos/store.py::EntityStore`（打包基准 ∪ 用户 `~/.vram_calc/servers/`）。
+
+**规划器**（`core/planner.py`）：
+- `enumerate_candidates` 枚举四类候选（类别序即网络惩罚升序）：
+  **single** 单机独立成实例 / **dp** 同型号 ≥2 台各跑副本（吞吐 ×N，副本间零互联）/
+  **pp** 跨机流水线 / **tp_cross** 跨机 TP（兜底，标慢）。TP 合法性 = 2 的幂 ∧ 整除注意力头数 ∧ ≤ 卡数。
+- `_eval_candidate` 对每台机器跑一遍 `estimate()`：产 `LedgerRow` 逐机账本（权重/开销/激活/KV 池/verdict）、
+  why 推理文案、FP8 硬件警告；MoE 模型 TP 即 EP 变体（`ep=tp`）。
+- `plan_deployment` 同类别内取（verdict, KV 余量）最优，跨类别按（verdict, 是否跨机, KV 余量）排，
+  返回 top3（全 over 则退回 ranked 前 3）。
+
+**命令生成**（`core/commands.py`）：单机/DP 一段 `vllm serve`（DP 注明每台同命令）；
+跨机方案三段——Ray head / worker join / serve（`--distributed-executor-backend ray`，
+MoE 附 `--enable-expert-parallel`）。
+
+**Web**：`POST /api/plan`（model_id + server_ids + 目标参数 → plans/warnings，逐机验混插与 GPU 在库）；
+`/plan` 页 = 服务器清单（勾选参与）+ 规划目标 → 方案卡（topo/badges/账本表/命令块，debounce 800ms 自动重算）。

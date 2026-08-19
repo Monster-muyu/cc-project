@@ -2,7 +2,7 @@
 
 部署 LLM 前估算显存:选模型 + 量化 + 显卡 + 并行/并发参数 → 能不能跑、最多扛几路并发、KV 池容量多少。
 
-仓库: http://192.168.243.204/root/vram-calc · 设计文档: `docs/design.md` · 测试: 23 项
+仓库: http://192.168.243.204/root/vram-calc · 设计文档: `docs/design.md` · 测试: 48 项
 
 ## 环境搭建(Windows + Anaconda)
 
@@ -36,6 +36,12 @@
 - **量化**:FP16/FP8/INT4/INT8/GGUF/EXL2;AWQ/GPTQ 预量化仓库自动识别并锁定
 - **并行**:显卡数量自由输入(dense 自动 TP,MoE 自动 EP),高级手动 TP/PP/EP 到 64
 - **推荐**:并发↔上下文对照表 + 保并发/保上下文/保守推荐(照着输保证放得下)
+- **多机规划**(`http://127.0.0.1:8000/plan`):手头几台服务器 + 一个模型目标 → 直接给部署方案
+  - 用法:添加服务器(名称/host/每台几张什么卡) → 勾选参与机器 → 选模型、上下文、并发 → 出方案
+  - 规则速览:方案优先级 **单机 > DP 多副本 > 跨机 PP > 跨机 TP**;机内混插 GPU 的机器自动跳过
+    (vLLM 不支持混型号 TP);MoE 模型自动出 EP 变体(`--enable-expert-parallel`)
+  - 输出:top3 方案卡(每台机器的显存账本 + verdict) + 一键复制的 `vllm serve` 启动命令
+    (跨机方案附 Ray head/worker 三段命令)
 
 ## 已知简化(升级路径见代码内 ponytail 注释)
 - 激活系数、引擎开销画像为经验值 → `scripts/calibrate.py` 对账后调整
