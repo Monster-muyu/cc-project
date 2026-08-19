@@ -1,6 +1,7 @@
 # VRAM 显存计算工具 — 设计文档
 
-> 版本: v2.1 · 状态: 已实现(与代码同步) · 初稿 2026-08-13 · 同步 2026-08-19
+> 版本: v2.2 · 状态: 已实现(与代码同步) · 初稿 2026-08-13 · 同步 2026-08-19
+> v2.2 变更: 新增**AI 助手**(见 §16):`assistant/` 包四模块 + 两个 SSE 路由 + 前端抽屉,新依赖 openai/anthropic。
 > v2.1 变更: 新增**多机规划**(见 §15):ServerSpec 服务器实体 + EntityStore 泛化存储、
 > planner 枚举四类候选(单机/DP/跨机PP/跨机TP)并评分取 top3、commands 生成启动命令、
 > `/api/plan` 与 `/plan` 页面。
@@ -385,3 +386,20 @@ MoE 附 `--enable-expert-parallel`）。
 
 **Web**：`POST /api/plan`（model_id + server_ids + 目标参数 → plans/warnings，逐机验混插与 GPU 在库）；
 `/plan` 页 = 服务器清单（勾选参与）+ 规划目标 → 方案卡（topo/badges/账本表/命令块，debounce 800ms 自动重算）。
+
+## 16. AI 助手（v2.2）
+
+`vram_calc/assistant/` 包四模块，浏览器抽屉 + SSE 流式对话，回答部署问题并给出可回填的推荐参数表。
+
+- **providers.py**：LLM 适配层。内部统一 OpenAI 消息/工具格式，`AnthropicProvider` 在边界翻译；
+  `OpenAIProvider` 兼容 DeepSeek/通义/Kimi 及本地 vLLM/Ollama。`chat_stream` 产出 TextDelta/ToolCall/Done。
+- **tools.py**：`calc_vram`（包 core.estimate）与 `plan_multi_node`（包 planner）的工具 schema + 执行，
+  不走 HTTP；按页面上下文决定暴露哪个工具。
+- **prompts.py**：system prompt = 契约（三段式回答 + [计算器]/[官方文档]/[经验] 来源标注 + 禁心算）
+  + 当前页面配置预注入 + vLLM 手册精简摘要。
+- **orchestrator.py**：`run_chat` 流式转发，工具调用 → 本地执行 → 结果回填续流（≤5 轮）；
+  事件契约 delta/tool/tool_result/error/done，异常单边界翻译成 error。
+- **路由**：`POST /api/assistant/chat`（SSE 流）与 `POST /api/assistant/test`（连接测试）。
+  Key 由前端 localStorage 随请求体传入，仅在内存中转发，不落盘。
+- **前端**：右下角浮球 + 抽屉（`static/assistant.js`），自动附带页面配置，推荐参数表带"应用"回填。
+- **依赖**：新增 `openai>=1.40`、`anthropic>=0.34`。测试用 FakeProvider 替换，零真实网络。
