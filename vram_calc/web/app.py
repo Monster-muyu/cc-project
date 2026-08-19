@@ -9,7 +9,7 @@ from dataclasses import asdict
 import json
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
@@ -20,6 +20,8 @@ from ..core.quant import QUANT_BYTES, bytes_per_kv
 from ..core.cluster import ServerSpec, GpuCount, server_is_mixed
 from ..core.planner import Machine, PlanInput, plan_deployment
 from ..core.commands import render_commands
+from ..assistant.providers import LLMConfig, get_provider, humanize_llm_error
+from ..assistant import orchestrator
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
                      save_model, save_gpu, fetch_model_preview, fetch_and_save_many,
                      fetch_modelscope, infer_quant_from_id,
@@ -289,6 +291,46 @@ def api_plan(req: PlanReq):
             p, req.model_id, req.context_len, req.concurrency, req.gpu_util, req.kv_quant)]
         out.append(d)
     return {"plans": out, "warnings": warnings}
+
+
+class AssistantChatReq(BaseModel):
+    config: dict
+    messages: list[dict]
+    page_ctx: dict | None = None
+
+
+class AssistantTestReq(BaseModel):
+    config: dict
+
+
+@app.post("/api/assistant/chat")
+def api_assistant_chat(req: AssistantChatReq):
+    try:
+        cfg = LLMConfig(**req.config)
+    except Exception as e:                          # config 非法 -> 422 而非 500
+        return JSONResponse({"error": str(e)}, status_code=422)
+
+    def gen():
+        # ponytail: 同步生成器套 StreamingResponse——uvicorn 线程池里跑，量级足够
+        last = None
+        for ev in orchestrator.run_chat(cfg, req.messages, req.page_ctx):
+            last = ev
+            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        if last is None or last.get("t") != "error":   # error 流不再补 [DONE]
+            yield "data: [DONE]\n\n"
+
+    return StreamingResponse(gen(), media_type="text/event-stream",
+                             headers={"Cache-Control": "no-cache"})
+
+
+@app.post("/api/assistant/test")
+def api_assistant_test(req: AssistantTestReq):
+    try:
+        cfg = LLMConfig(**req.config)
+        model = get_provider(cfg).test_connection()
+        return {"ok": True, "model_name": model}
+    except Exception as e:                     # noqa: BLE001 — 人话化，Key 不外泄
+        return {"ok": False, "error": humanize_llm_error(e)}
 
 
 if __name__ == "__main__":
