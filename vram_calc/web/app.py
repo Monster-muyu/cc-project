@@ -99,6 +99,11 @@ async def index(request: Request):
     })
 
 
+@app.get("/plan", response_class=HTMLResponse)
+async def plan_page(request: Request):
+    return templates.TemplateResponse(request, "plan.html", {})
+
+
 @app.get("/api/models")
 def api_models():
     return [{"id": m.id, "name": m.name, "is_moe": bool(m.num_experts),
@@ -261,6 +266,9 @@ def api_plan(req: PlanReq):
         s = get_server(sid)
         if s is None:
             return JSONResponse({"error": f"未知服务器: {sid}"}, status_code=400)
+        if not s.gpus:
+            warnings.append(f"{s.name} 未配置 GPU，已跳过")
+            continue
         if server_is_mixed(s):
             warnings.append(f"{s.name} 机内混插 GPU，v1 不参与规划（vLLM 不支持混型号 TP）")
             continue

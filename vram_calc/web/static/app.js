@@ -1,5 +1,6 @@
 "use strict";
-const $ = (id) => document.getElementById(id);
+// $ lives in common.js (querySelector-based); app.js historically did getElementById
+const $id = (id) => document.getElementById(id);
 const PARALLEL = [1, 2, 4, 8, 16, 32, 64];
 const EP_VALS = [1, 2, 4, 8, 16, 32, 64];
 // palette (dataviz skill reference)
@@ -11,7 +12,7 @@ let ALL_GPUS = [];
 let activeCat = "all";
 
 function currentModel() {
-  return ALL_MODELS.find((x) => x.id === $("model").value);
+  return ALL_MODELS.find((x) => x.id === $id("model").value);
 }
 function currentModelIsMoe() {
   return !!currentModel()?.is_moe;
@@ -19,22 +20,22 @@ function currentModelIsMoe() {
 
 // sync TP/PP/EP-vs-gpu-count consistency + vLLM head-divisibility hints
 function syncParallelHint() {
-  const th = $("tp-hint");
+  const th = $id("tp-hint");
   if (!th) return;
-  const n = +$("gpu_count").value || 1;
-  const t = +$("tp").value || 1, p = +$("pp").value || 1, e = +$("ep").value || 1;
+  const n = +$id("gpu_count").value || 1;
+  const t = +$id("tp").value || 1, p = +$id("pp").value || 1, e = +$id("ep").value || 1;
   const used = t * p * (currentModelIsMoe() ? e : 1);
   const msgs = [];
   if (used !== n)
     msgs.push(`当前 TP×PP${currentModelIsMoe() ? "×EP" : ""} = ${used} 卡,与显卡数量 ${n} 不一致`);
   // vLLM/SGLang require total attention heads % TP == 0 (odd GPU counts often fail)
-  const eng = $("engine").value;
+  const eng = $id("engine").value;
   const m = currentModel();
   if ((eng === "vllm" || eng === "sglang") && m && m.attn_heads && t > 1 && m.attn_heads % t !== 0)
     msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
   th.textContent = msgs.join("; ");
   // also surface the head-divisibility blocker OUTSIDE the collapsed details
-  const warn = $("tp-warn");
+  const warn = $id("tp-warn");
   if (warn) {
     const blocked = (eng === "vllm" || eng === "sglang") && m && m.attn_heads
       && t > 1 && m.attn_heads % t !== 0;
@@ -47,11 +48,11 @@ function syncParallelHint() {
 // user manually changed one of TP/PP/EP -> rebalance the others so the
 // product still equals gpu_count (e.g. 3 cards: TP=1 -> PP up to 3; TP=3 -> PP back to 1)
 function rebalanceParallel(changed) {
-  const n = +$("gpu_count").value || 1;
+  const n = +$id("gpu_count").value || 1;
   const moe = currentModelIsMoe();
-  let t = Math.max(1, +$("tp").value || 1);
-  let p = Math.max(1, +$("pp").value || 1);
-  let e = Math.max(1, +$("ep").value || 1);
+  let t = Math.max(1, +$id("tp").value || 1);
+  let p = Math.max(1, +$id("pp").value || 1);
+  let e = Math.max(1, +$id("ep").value || 1);
   if (!moe) e = 1;                       // EP is meaningless for dense models
   // the dimension the user just set wins; the remaining one absorbs the residue
   const residue = Math.max(1, Math.floor(n / (t * (moe ? e : 1))));
@@ -59,9 +60,9 @@ function rebalanceParallel(changed) {
   if (changed === "tp") { p = residue; if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
   else if (changed === "pp") { t = Math.max(1, Math.floor(n / p)); if (moe) e = 1; if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
   else if (changed === "ep") { if (moe) { t = Math.max(1, Math.floor(n / e)); p = Math.max(1, Math.floor(n / (t * e))); } }
-  $("tp").value = t; $("pp").value = p; $("ep").value = e;
+  $id("tp").value = t; $id("pp").value = p; $id("ep").value = e;
   const used = t * p * (moe ? e : 1);
-  $("parallel-hint").textContent = used === n
+  $id("parallel-hint").textContent = used === n
     ? `${used} 卡组合:TP=${t} × PP=${p}${moe ? ` × EP=${e}` : ""}`
     : `TP=${t} × PP=${p}${moe ? ` × EP=${e}` : ""} = ${used} 卡,显卡数量 ${n} 无法整除配置(需 TP×PP${moe ? "×EP" : ""} = ${n})`;
   syncParallelHint();
@@ -69,33 +70,26 @@ function rebalanceParallel(changed) {
 
 // map "我有 N 张卡" -> best default parallelism (dense:TP, MoE:EP; any N incl. odd works)
 function applyParallelStrategy() {
-  const n = +$("gpu_count").value || 1;
-  $("tp").value = 1; $("pp").value = 1; $("ep").value = 1;
-  const hint = $("parallel-hint");
+  const n = +$id("gpu_count").value || 1;
+  $id("tp").value = 1; $id("pp").value = 1; $id("ep").value = 1;
+  const hint = $id("parallel-hint");
   if (n === 1) { hint.textContent = "单卡部署。模型放不下时调高显卡数量分摊。"; syncParallelHint(); return; }
   if (currentModelIsMoe()) {
-    $("ep").value = n;
+    $id("ep").value = n;
     hint.textContent = `${n} 卡专家并行(EP)：每卡只装 1/${n} 的专家权重`;
   } else {
-    $("tp").value = n;
+    $id("tp").value = n;
     hint.textContent = `${n} 卡张量并行(TP)：每卡显存 ≈ 总量 ÷ ${n}`;
   }
   syncParallelHint();
 }
 
-// accept "4096" / "32k" / "200k" / "1m"
-function parseContext(s) {
-  s = String(s).trim().toLowerCase().replace(/[,，\s]/g, "");
-  const m = s.match(/^(\d+(?:\.\d+)?)([km])?$/);
-  if (!m) return NaN;
-  let n = parseFloat(m[1]);
-  if (m[2] === "k") n *= 1000;
-  else if (m[2] === "m") n *= 1000000;
-  return Math.round(n);
-}
+// accept "4096" / "32k" / "200k" / "1m"  (parseContext lives in common.js)
 function onContextInput() {
-  const n = parseContext($("context_len").value);
-  $("ctx-val").textContent = isNaN(n) ? "(无效)" : `= ${n.toLocaleString()}`;
+  const n = parseContext($id("context_len").value);
+  // parseContext returns 0 (not NaN) for junk -- keep the "(无效)" hint
+  const bad = !n || isNaN(n);
+  $id("ctx-val").textContent = bad ? "(无效)" : `= ${n.toLocaleString()}`;
 }
 
 async function init() {
@@ -112,7 +106,7 @@ async function loadDropdowns() {
   ALL_GPUS = await fetch("/api/gpus").then((r) => r.json());
   buildCategoryFilter();
   filterModels();
-  const gs = $("gpu");
+  const gs = $id("gpu");
   const cur = gs.value;
   gs.innerHTML = "";
   ALL_GPUS.forEach((g) => gs.add(new Option(`${g.name} (${g.vram_gb}GB)`, g.id)));
@@ -123,12 +117,12 @@ async function loadDropdowns() {
 // On older cards (3090/A100=Ampere sm80-86): FP8 KV cache -> vLLM refuses to start;
 // FP8 weights -> runs but is fake-fp8 (software dequant, no speedup).
 function syncGpuCapability() {
-  const el = $("fp8-warn");
+  const el = $id("fp8-warn");
   if (!el) return;
-  const g = ALL_GPUS.find((x) => x.id === $("gpu").value);
+  const g = ALL_GPUS.find((x) => x.id === $id("gpu").value);
   if (!g || g.supports_fp8 === undefined) { el.hidden = true; return; }
-  const q = $("quant").value, kvq = $("kv_quant").value;
-  const eng = $("engine").value;
+  const q = $id("quant").value, kvq = $id("kv_quant").value;
+  const eng = $id("engine").value;
   const msgs = [];
   if (!g.supports_fp8) {
     if (kvq === "fp8")
@@ -142,7 +136,7 @@ function syncGpuCapability() {
 
 function buildCategoryFilter() {
   const cats = ["all", ...new Set(ALL_MODELS.map((m) => m.category))];
-  const el = $("cat-filter");
+  const el = $id("cat-filter");
   el.innerHTML = "";
   cats.forEach((cat) => {
     const b = document.createElement("button");
@@ -155,7 +149,7 @@ function buildCategoryFilter() {
 }
 
 function filterModels() {
-  const ms = $("model");
+  const ms = $id("model");
   const cur = ms.value;
   ms.innerHTML = "";
   ALL_MODELS
@@ -166,8 +160,8 @@ function filterModels() {
 
 function onModelChange() {
   applyParallelStrategy();
-  const m = ALL_MODELS.find((x) => x.id === $("model").value);
-  const q = $("quant");
+  const m = ALL_MODELS.find((x) => x.id === $id("model").value);
+  const q = $id("quant");
   if (m && m.quant) { q.value = m.quant; q.disabled = true; }   // pre-quantized repo -> lock
   else { q.disabled = false; }
   syncGpuCapability();
@@ -175,12 +169,12 @@ function onModelChange() {
 
 function currentInput() {
   return {
-    model_id: $("model").value, gpu_id: $("gpu").value, quant: $("quant").value,
-    context_len: parseContext($("context_len").value) || 4096, concurrency: +$("concurrency").value || 1,
-    engine: $("engine").value, tp: +$("tp").value || 1, pp: +$("pp").value || 1,
-    ep: +$("ep").value || 1, kv_quant: $("kv_quant").value, cpu_offload: +$("cpu_offload").value,
-    safety_factor: +$("gpu_util").value,
-    max_num_batched_tokens: +$("max_batch").value || 8192,
+    model_id: $id("model").value, gpu_id: $id("gpu").value, quant: $id("quant").value,
+    context_len: parseContext($id("context_len").value) || 4096, concurrency: +$id("concurrency").value || 1,
+    engine: $id("engine").value, tp: +$id("tp").value || 1, pp: +$id("pp").value || 1,
+    ep: +$id("ep").value || 1, kv_quant: $id("kv_quant").value, cpu_offload: +$id("cpu_offload").value,
+    safety_factor: +$id("gpu_util").value,
+    max_num_batched_tokens: +$id("max_batch").value || 8192,
   };
 }
 
@@ -189,9 +183,9 @@ function bindEvents() {
   const debounced = () => { clearTimeout(timer); timer = setTimeout(recalc, 300); };
   ["quant", "gpu", "engine", "tp", "pp", "ep", "kv_quant",
    "context_len", "concurrency", "max_batch", "cpu_offload", "gpu_util", "model", "gpu_count"].forEach((id) =>
-    $(id).addEventListener("input", () => {
-      if (id === "cpu_offload") $("offload-val").textContent = Math.round(+$("cpu_offload").value * 100) + "%";
-      if (id === "gpu_util") $("util-val").textContent = Math.round(+$("gpu_util").value * 100) + "%";
+    $id(id).addEventListener("input", () => {
+      if (id === "cpu_offload") $id("offload-val").textContent = Math.round(+$id("cpu_offload").value * 100) + "%";
+      if (id === "gpu_util") $id("util-val").textContent = Math.round(+$id("gpu_util").value * 100) + "%";
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
       if (id === "tp" || id === "pp" || id === "ep") rebalanceParallel(id);
@@ -199,19 +193,19 @@ function bindEvents() {
       if (id === "gpu" || id === "quant" || id === "kv_quant" || id === "engine") syncGpuCapability();
       debounced();
     }));
-  $("btn-add-model").onclick = openModelModal;
-  $("btn-bulk-model").onclick = openBulkModal;
-  $("btn-add-gpu").onclick = openGpuModal;
+  $id("btn-add-model").onclick = openModelModal;
+  $id("btn-bulk-model").onclick = openBulkModal;
+  $id("btn-add-gpu").onclick = openGpuModal;
 }
 
 async function recalc() {
   const body = currentInput();
   const opt = { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) };
   const r = await fetch("/api/calc", opt).then((r) => r.json());
-  if (r.error) { $("verdict").textContent = r.error; return; }
+  if (r.error) { $id("verdict").textContent = r.error; return; }
   renderResult(r);
   const s = await fetch("/api/sweep?sweep_var=concurrency&x0=1", opt).then((r) => r.json());
-  if (!s.error) $("chart-sweep").innerHTML = sweepChart(s, "并发数");
+  if (!s.error) $id("chart-sweep").innerHTML = sweepChart(s, "并发数");
 }
 
 function renderResult(r) {
@@ -219,7 +213,7 @@ function renderResult(r) {
   const [txt, col] = map[r.verdict];
   const hd = r.headroom_gb;
   const perGpu = r.num_gpus > 1 ? `（每卡 ${r.per_gpu_gb} GB）` : "";
-  const v = $("verdict");
+  const v = $id("verdict");
   v.className = "verdict " + r.verdict;
   const hdTxt = r.verdict === "over"
     ? `差 ${(-hd).toFixed(2)} GB,加载即 OOM`
@@ -227,16 +221,16 @@ function renderResult(r) {
   v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b>${perGpu} ` +
     `/ 可用 ${r.usable_gb} GB（${hdTxt}）` +
     (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "");
-  $("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
-  $("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
-  $("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);
+  $id("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
+  $id("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
+  $id("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);
 
   // vLLM dynamic KV capacity: adaptive table + recommendations
-  const kb = $("kv-capacity");
+  const kb = $id("kv-capacity");
   if (r.max_kv_tokens > 0) {
     const B = r.max_kv_tokens;
-    const uCtx = parseContext($("context_len").value) || 0;
-    const uConc = +$("concurrency").value || 1;
+    const uCtx = parseContext($id("context_len").value) || 0;
+    const uConc = +$id("concurrency").value || 1;
     const fmt = (n) => n.toLocaleString();
     const fctx = (n) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : Math.floor(n / 1000) + "k");
     // adaptive concurrency set, always includes the user's value
@@ -359,77 +353,77 @@ function sweepChart(s, sweepLabel = "并发数") {
 
 // ---- add model (single) ----
 function openModelModal() {
-  $("mf-fields").classList.add("hidden");
-  $("mf-save").disabled = true;
-  $("mf-error").textContent = "";
-  $("mf-repo").value = "";
-  $("modal-model").classList.remove("hidden");
+  $id("mf-fields").classList.add("hidden");
+  $id("mf-save").disabled = true;
+  $id("mf-error").textContent = "";
+  $id("mf-repo").value = "";
+  $id("modal-model").classList.remove("hidden");
 }
-$("mf-cancel").onclick = () => $("modal-model").classList.add("hidden");
-$("mf-fetch").onclick = async () => {
-  $("mf-error").textContent = "拉取中…";
-  const repo = $("mf-repo").value.trim();
+$id("mf-cancel").onclick = () => $id("modal-model").classList.add("hidden");
+$id("mf-fetch").onclick = async () => {
+  $id("mf-error").textContent = "拉取中…";
+  const repo = $id("mf-repo").value.trim();
   if (!repo) return;
-  const cat = $("mf-cat").value;
-  const m = await fetch(`/api/models/preview?repo_id=${encodeURIComponent(repo)}&category=${cat}&source=${$("mf-source").value}`).then((r) => r.json());
-  if (m.error) { $("mf-error").textContent = m.error; return; }
-  $("mf-name").value = m.name; $("mf-params").value = m.params_b;
-  $("mf-layers").value = m.layers; $("mf-hidden").value = m.hidden_dim;
-  $("mf-attn").value = m.attn_heads; $("mf-kv").value = m.kv_heads;
-  $("mf-headdim").value = m.head_dim; $("mf-experts").value = m.num_experts;
-  $("mf-kvlayers").value = m.kv_layers || 0;
-  $("mf-expertparams").value = m.expert_params_b;
-  $("mf-fields").classList.remove("hidden");
-  $("mf-save").disabled = false;
-  $("mf-error").textContent = "已解析，请核对 KV 头数等关键字段后入库。";
+  const cat = $id("mf-cat").value;
+  const m = await fetch(`/api/models/preview?repo_id=${encodeURIComponent(repo)}&category=${cat}&source=${$id("mf-source").value}`).then((r) => r.json());
+  if (m.error) { $id("mf-error").textContent = m.error; return; }
+  $id("mf-name").value = m.name; $id("mf-params").value = m.params_b;
+  $id("mf-layers").value = m.layers; $id("mf-hidden").value = m.hidden_dim;
+  $id("mf-attn").value = m.attn_heads; $id("mf-kv").value = m.kv_heads;
+  $id("mf-headdim").value = m.head_dim; $id("mf-experts").value = m.num_experts;
+  $id("mf-kvlayers").value = m.kv_layers || 0;
+  $id("mf-expertparams").value = m.expert_params_b;
+  $id("mf-fields").classList.remove("hidden");
+  $id("mf-save").disabled = false;
+  $id("mf-error").textContent = "已解析，请核对 KV 头数等关键字段后入库。";
 };
-$("mf-save").onclick = async () => {
+$id("mf-save").onclick = async () => {
   const spec = {
-    id: $("mf-repo").value.trim(), name: $("mf-name").value, category: $("mf-cat").value,
-    params_b: +$("mf-params").value, layers: +$("mf-layers").value, hidden_dim: +$("mf-hidden").value,
-    attn_heads: +$("mf-attn").value, kv_heads: +$("mf-kv").value, head_dim: +$("mf-headdim").value,
-    kv_layers: +$("mf-kvlayers").value || 0,
-    num_experts: +$("mf-experts").value, expert_params_b: +$("mf-expertparams").value,
+    id: $id("mf-repo").value.trim(), name: $id("mf-name").value, category: $id("mf-cat").value,
+    params_b: +$id("mf-params").value, layers: +$id("mf-layers").value, hidden_dim: +$id("mf-hidden").value,
+    attn_heads: +$id("mf-attn").value, kv_heads: +$id("mf-kv").value, head_dim: +$id("mf-headdim").value,
+    kv_layers: +$id("mf-kvlayers").value || 0,
+    num_experts: +$id("mf-experts").value, expert_params_b: +$id("mf-expertparams").value,
   };
   const r = await fetch("/api/models", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec) }).then((r) => r.json());
-  if (r.error) { $("mf-error").textContent = r.error; return; }
-  $("modal-model").classList.add("hidden");
-  await loadDropdowns(); $("model").value = spec.id; onModelChange(); recalc();
+  if (r.error) { $id("mf-error").textContent = r.error; return; }
+  $id("modal-model").classList.add("hidden");
+  await loadDropdowns(); $id("model").value = spec.id; onModelChange(); recalc();
 };
 
 // ---- bulk import ----
 function openBulkModal() {
-  $("bf-list").value = ""; $("bf-result").textContent = "";
-  $("modal-bulk").classList.remove("hidden");
+  $id("bf-list").value = ""; $id("bf-result").textContent = "";
+  $id("modal-bulk").classList.remove("hidden");
 }
-$("bf-cancel").onclick = () => $("modal-bulk").classList.add("hidden");
-$("bf-go").onclick = async () => {
-  const ids = $("bf-list").value.split("\n").map((s) => s.trim()).filter(Boolean);
-  if (!ids.length) { $("bf-result").textContent = "请输入至少一个 Repo ID"; return; }
-  $("bf-result").className = "hint"; $("bf-result").textContent = `正在拉取 ${ids.length} 个模型…`;
+$id("bf-cancel").onclick = () => $id("modal-bulk").classList.add("hidden");
+$id("bf-go").onclick = async () => {
+  const ids = $id("bf-list").value.split("\n").map((s) => s.trim()).filter(Boolean);
+  if (!ids.length) { $id("bf-result").textContent = "请输入至少一个 Repo ID"; return; }
+  $id("bf-result").className = "hint"; $id("bf-result").textContent = `正在拉取 ${ids.length} 个模型…`;
   const r = await fetch("/api/models/bulk", {
     method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ repo_ids: ids, category: $("bf-cat").value, source: $("bf-source").value }),
+    body: JSON.stringify({ repo_ids: ids, category: $id("bf-cat").value, source: $id("bf-source").value }),
   }).then((r) => r.json());
   const fail = r.failed || [];
-  $("bf-result").className = fail.length ? "error" : "success";
-  $("bf-result").innerHTML = `✅ 成功 ${r.saved.length} 个${fail.length ? ` · ❌ 失败 ${fail.length}：` + fail.map((f) => f.id).join("、") : ""}`;
+  $id("bf-result").className = fail.length ? "error" : "success";
+  $id("bf-result").innerHTML = `✅ 成功 ${r.saved.length} 个${fail.length ? ` · ❌ 失败 ${fail.length}：` + fail.map((f) => f.id).join("、") : ""}`;
   await loadDropdowns();
 };
 
 // ---- add gpu ----
 function openGpuModal() {
-  $("gf-error").textContent = "";
-  $("gf-id").value = $("gf-name").value = $("gf-vram").value = "";
-  $("modal-gpu").classList.remove("hidden");
+  $id("gf-error").textContent = "";
+  $id("gf-id").value = $id("gf-name").value = $id("gf-vram").value = "";
+  $id("modal-gpu").classList.remove("hidden");
 }
-$("gf-cancel").onclick = () => $("modal-gpu").classList.add("hidden");
-$("gf-save").onclick = async () => {
-  const spec = { id: $("gf-id").value.trim(), name: $("gf-name").value, vram_gb: +$("gf-vram").value };
+$id("gf-cancel").onclick = () => $id("modal-gpu").classList.add("hidden");
+$id("gf-save").onclick = async () => {
+  const spec = { id: $id("gf-id").value.trim(), name: $id("gf-name").value, vram_gb: +$id("gf-vram").value };
   const r = await fetch("/api/gpus", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(spec) }).then((r) => r.json());
-  if (r.error) { $("gf-error").textContent = r.error; return; }
-  $("modal-gpu").classList.add("hidden");
-  await loadDropdowns(); $("gpu").value = spec.id; recalc();
+  if (r.error) { $id("gf-error").textContent = r.error; return; }
+  $id("modal-gpu").classList.add("hidden");
+  await loadDropdowns(); $id("gpu").value = spec.id; recalc();
 };
 
 init();

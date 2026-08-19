@@ -50,6 +50,14 @@ def test_plan_mixed_server_warns(tmp_path):
     assert r.json()["warnings"] and r.json()["plans"] == []
 
 
+def test_plan_empty_gpus_server_warns(tmp_path):
+    _setup(tmp_path)
+    cli.post("/api/servers", json={"id": "e", "name": "E", "host": "", "gpus": []})
+    r = cli.post("/api/plan", json={"model_id": "meta-llama/Meta-Llama-3-8B",
+                                    "server_ids": ["e"], "context_len": 4096})
+    assert r.status_code == 200 and r.json()["warnings"]
+
+
 def test_plan_unknown_ids_400(tmp_path):
     _setup(tmp_path)
     assert cli.post("/api/plan", json={"model_id": "no/such", "server_ids": ["srv-a"],
