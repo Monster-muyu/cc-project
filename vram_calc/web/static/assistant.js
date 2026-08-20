@@ -30,8 +30,8 @@ document.body.insertAdjacentHTML("beforeend", `
     </select></label>
     <label>Base URL <input id="ai-baseurl" placeholder="https://api.deepseek.com/v1（本地 vLLM: http://ip:8000/v1）"/></label>
     <label>API Key <input id="ai-key" type="password" placeholder="留空则匿名（部分本地服务允许）"/></label>
-    <label>模型 <input id="ai-model" list="ai-model-list" placeholder="deepseek-chat / qwen2.5-72b-instruct…"/>
-      <datalist id="ai-model-list"></datalist></label>
+    <label>模型 <input id="ai-model" placeholder="deepseek-chat / qwen2.5-72b-instruct…"/></label>
+    <select id="ai-model-pick" hidden title="从服务端拉到的模型列表"></select>
     <button id="ai-list-models">📋 获取模型列表</button>
     <button id="ai-test">🔌 连接测试</button>
     <span id="ai-test-res" class="hint"></span>
@@ -238,11 +238,17 @@ function curCfgFromForm() {
 async function listModels() {
   $d("ai-test-res").innerHTML = "获取模型列表中…";
   const r = await jpost("/api/assistant/models", {config: curCfgFromForm()});
-  if (r.ok) {
-    $d("ai-model-list").innerHTML = (r.models || []).map(id => `<option value="${esc(id)}">`).join("");
-    $d("ai-test-res").innerHTML = `<span class="dot-ok"></span>获取到 ${r.models.length} 个模型，点击「模型」输入框选择`;
+  if (r.ok && (r.models || []).length) {
+    const sel = $d("ai-model-pick");
+    sel.innerHTML = `<option value="">— 选择模型（${r.models.length} 个）—</option>` +
+      r.models.map(id => `<option value="${esc(id)}" ${id === $d("ai-model").value ? "selected" : ""}>${esc(id)}</option>`).join("");
+    sel.hidden = false;                          // datalist 光点击不弹，显式下拉才直观
+    $d("ai-test-res").innerHTML = `<span class="dot-ok"></span>获取到 ${r.models.length} 个模型，从下方下拉选择`;
   } else {
-    $d("ai-test-res").innerHTML = `<span class="dot-ok dot-bad"></span>${esc(r.error)}`;
+    $d("ai-model-pick").hidden = true;
+    $d("ai-test-res").innerHTML = r.ok
+      ? `<span class="dot-ok dot-bad"></span>服务端未返回任何模型`
+      : `<span class="dot-ok dot-bad"></span>${esc(r.error)}`;
   }
 }
 
@@ -256,6 +262,9 @@ $d("ai-q").addEventListener("keydown", e => {
 $d("ai-cfg").onclick = openCfg;
 $d("ai-test").onclick = testConn;
 $d("ai-list-models").onclick = listModels;
+$d("ai-model-pick").onchange = e => {           // 选中即写入输入框（输入框仍是真值源）
+  if (e.target.value) $d("ai-model").value = e.target.value;
+};
 $d("ai-cfg-cancel").onclick = () => $d("ai-modal").classList.add("hidden");
 $d("ai-cfg-save").onclick = () => {
   cfg = {protocol: $d("ai-protocol").value, base_url: $d("ai-baseurl").value.trim(),
