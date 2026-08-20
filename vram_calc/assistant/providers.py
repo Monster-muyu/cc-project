@@ -53,6 +53,10 @@ class LLMProvider(ABC):
     def test_connection(self) -> str:
         """1-token 最小往返。成功返回模型名，失败 raise 原始异常。"""
 
+    @abstractmethod
+    def list_models(self) -> list[str]:
+        """列出服务端可用模型 id。失败 raise 原始异常。"""
+
 
 class OpenAIProvider(LLMProvider):
     """OpenAI 兼容：OpenAI/DeepSeek/Qwen/GLM/Kimi/SiliconFlow/vLLM/Ollama 全走这里。"""
@@ -98,6 +102,10 @@ class OpenAIProvider(LLMProvider):
                                        messages=[{"role": "user", "content": "hi"}],
                                        max_tokens=1)
         return self.cfg.model
+
+    def list_models(self):
+        client = self._client()
+        return sorted(m.id for m in client.models.list())
 
 
 def split_system(messages: list[dict]) -> tuple[list[str], list[dict]]:
@@ -165,6 +173,10 @@ class AnthropicProvider(LLMProvider):
                                    messages=[{"role": "user", "content": "hi"}],
                                    max_tokens=1)
         return r.model
+
+    def list_models(self):
+        client = self._client()
+        return sorted(m.id for m in client.models.list())
 
 
 def humanize_llm_error(exc: Exception) -> str:

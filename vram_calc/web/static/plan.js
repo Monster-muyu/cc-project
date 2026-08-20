@@ -3,14 +3,25 @@ let servers = [], models = [], gpus = [];
 const selected = new Set();
 let deb = null;
 let lastPlan = null;
+const LS_SEL = "vramcalc.planSel";           // 勾选的服务器跨页面/刷新保留
+
+function saveSel() { localStorage.setItem(LS_SEL, JSON.stringify([...selected])); }
+function restoreSel() {
+  try {
+    const ids = JSON.parse(localStorage.getItem(LS_SEL) || "[]");
+    ids.forEach(id => { if (servers.some(s => s.id === id)) selected.add(id); });
+  } catch {}
+}
 
 async function init() {
   [servers, models, gpus] = await Promise.all([
     jget("/api/servers"), jget("/api/models"), jget("/api/gpus")]);
   fillModelSel();
   fillGpuSelects();
+  restoreSel();
   renderServers();
   bind();
+  if (selected.size) runPlan();               // 恢复勾选后直接出方案
 }
 
 function fillModelSel(keepId) {
@@ -43,6 +54,7 @@ function bind() {
     const id = e.target.dataset.sel;
     if (!id) return;
     e.target.checked ? selected.add(id) : selected.delete(id);
+    saveSel();
     schedulePlan();
   });
   $("#srv-list").addEventListener("click", async e => {
@@ -55,6 +67,7 @@ function bind() {
     await fetch(`/api/servers/${id}`, {method: "DELETE"});
     servers = servers.filter(s => s.id !== id);
     selected.delete(id);
+    saveSel();
     renderServers();
     schedulePlan();
   });

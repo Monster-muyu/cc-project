@@ -333,6 +333,16 @@ def api_assistant_test(req: AssistantTestReq):
         return {"ok": False, "error": humanize_llm_error(e)}
 
 
+@app.post("/api/assistant/models")
+def api_assistant_models(req: AssistantTestReq):
+    """列出接入端点可用的模型 id（供设置弹窗一键获取）。"""
+    try:
+        cfg = LLMConfig(**req.config)
+        return {"ok": True, "models": get_provider(cfg).list_models()}
+    except Exception as e:                     # noqa: BLE001
+        return {"ok": False, "error": humanize_llm_error(e)}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="127.0.0.1", port=8000)

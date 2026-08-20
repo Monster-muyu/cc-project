@@ -57,3 +57,21 @@ def test_test_route_error(monkeypatch):
 def test_chat_bad_config_422():
     r = cli.post("/api/assistant/chat", json={"config": {"protocol": 123}, "messages": "x"})
     assert r.status_code == 422
+
+def test_models_route(monkeypatch):
+    import vram_calc.web.app as webapp
+    class FP:
+        def list_models(self):
+            return ["deepseek-chat", "deepseek-reasoner"]
+    monkeypatch.setattr(webapp, "get_provider", lambda cfg: FP())
+    r = cli.post("/api/assistant/models", json={"config": BODY["config"]})
+    assert r.json() == {"ok": True, "models": ["deepseek-chat", "deepseek-reasoner"]}
+
+
+def test_models_route_error(monkeypatch):
+    import vram_calc.web.app as webapp
+    def boom(cfg):
+        raise RuntimeError("connection refused")
+    monkeypatch.setattr(webapp, "get_provider", boom)
+    r = cli.post("/api/assistant/models", json={"config": BODY["config"]})
+    assert r.json()["ok"] is False

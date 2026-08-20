@@ -30,7 +30,9 @@ document.body.insertAdjacentHTML("beforeend", `
     </select></label>
     <label>Base URL <input id="ai-baseurl" placeholder="https://api.deepseek.com/v1（本地 vLLM: http://ip:8000/v1）"/></label>
     <label>API Key <input id="ai-key" type="password" placeholder="留空则匿名（部分本地服务允许）"/></label>
-    <label>模型 <input id="ai-model" placeholder="deepseek-chat / qwen2.5-72b-instruct…"/></label>
+    <label>模型 <input id="ai-model" list="ai-model-list" placeholder="deepseek-chat / qwen2.5-72b-instruct…"/>
+      <datalist id="ai-model-list"></datalist></label>
+    <button id="ai-list-models">📋 获取模型列表</button>
     <button id="ai-test">🔌 连接测试</button>
     <span id="ai-test-res" class="hint"></span>
     <div class="error" id="ai-cfg-err"></div>
@@ -183,25 +185,33 @@ async function send() {
     `<div class="msg-ai streaming"><div class="md-live"></div></div>`);
   const card = {el: $d("ai-body").lastElementChild, raw: "", lastResult: null};
   $d("ai-body").scrollTop = $d("ai-body").scrollHeight;
-  try {
-    const resp = await fetch("/api/assistant/chat", {
-      method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({config: cfg, messages: s.messages,
-                            page_ctx: window.__assistant_ctx ? window.__assistant_ctx() : null})});
-    const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
-    while (true) {
-      const {value, done} = await reader.read(); if (done) break;
-      buf += dec.decode(value, {stream: true});
-      let i;
-      while ((i = buf.indexOf("\n\n")) >= 0) {
-        const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
-        if (!line.startsWith("data:")) continue;
-        const d = line.slice(5).trim();
-        if (d === "[DONE]") continue;
-        handleEvent(JSON.parse(d), card);
+  // ponytail: 中途离开页面会 abort 流式连接，Chrome 可能把复用的连接判坏，
+  // 下一次 fetch 报 "Failed to fetch" —— 自动重试一次自愈，再失败才报错
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const resp = await fetch("/api/assistant/chat", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({config: cfg, messages: s.messages,
+                              page_ctx: window.__assistant_ctx ? window.__assistant_ctx() : null})});
+      const reader = resp.body.getReader(); const dec = new TextDecoder(); let buf = "";
+      while (true) {
+        const {value, done} = await reader.read(); if (done) break;
+        buf += dec.decode(value, {stream: true});
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 2);
+          if (!line.startsWith("data:")) continue;
+          const d = line.slice(5).trim();
+          if (d === "[DONE]") continue;
+          handleEvent(JSON.parse(d), card);
+        }
       }
+      break;                                    // 流正常结束，不重试
+    } catch (e) {
+      if (attempt === 0) { await new Promise(r => setTimeout(r, 600)); continue; }
+      card.raw += `\n\n**连接失败：** ${e.message}（网络抖动可再发一次）`;
     }
-  } catch (e) { card.raw += `\n\n**连接失败：** ${e.message}`; }
+  }
   if (card.raw.trim()) s.messages.push({role: "assistant", content: card.raw});
   saveSess(loadSess().map(x => x.id === s.id ? s : x));
   finalize(card, s);
@@ -215,12 +225,25 @@ function openCfg() {
 }
 async function testConn() {
   $d("ai-test-res").innerHTML = "测试中…";
-  const c = {protocol: $d("ai-protocol").value, base_url: $d("ai-baseurl").value.trim(),
-             api_key: $d("ai-key").value, model: $d("ai-model").value.trim()};
+  const c = curCfgFromForm();
   const r = await jpost("/api/assistant/test", {config: c});
   $d("ai-test-res").innerHTML = r.ok
     ? `<span class="dot-ok"></span>已连接 ${esc(r.model_name)}`
     : `<span class="dot-ok dot-bad"></span>${esc(r.error)}`;
+}
+function curCfgFromForm() {
+  return {protocol: $d("ai-protocol").value, base_url: $d("ai-baseurl").value.trim(),
+          api_key: $d("ai-key").value, model: $d("ai-model").value.trim()};
+}
+async function listModels() {
+  $d("ai-test-res").innerHTML = "获取模型列表中…";
+  const r = await jpost("/api/assistant/models", {config: curCfgFromForm()});
+  if (r.ok) {
+    $d("ai-model-list").innerHTML = (r.models || []).map(id => `<option value="${esc(id)}">`).join("");
+    $d("ai-test-res").innerHTML = `<span class="dot-ok"></span>获取到 ${r.models.length} 个模型，点击「模型」输入框选择`;
+  } else {
+    $d("ai-test-res").innerHTML = `<span class="dot-ok dot-bad"></span>${esc(r.error)}`;
+  }
 }
 
 $d("ai-fab").onclick = () => { $d("ai-drawer").classList.remove("hidden");
@@ -232,6 +255,7 @@ $d("ai-q").addEventListener("keydown", e => {
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
 $d("ai-cfg").onclick = openCfg;
 $d("ai-test").onclick = testConn;
+$d("ai-list-models").onclick = listModels;
 $d("ai-cfg-cancel").onclick = () => $d("ai-modal").classList.add("hidden");
 $d("ai-cfg-save").onclick = () => {
   cfg = {protocol: $d("ai-protocol").value, base_url: $d("ai-baseurl").value.trim(),
