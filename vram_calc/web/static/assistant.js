@@ -96,8 +96,13 @@ function curSess(create = true) {
   return s;
 }
 function renderSessSel() {
-  $d("ai-sess-sel").innerHTML = loadSess().map(s =>
-    `<option value="${s.id}" ${s.id === localStorage.getItem(LS_CUR) ? "selected" : ""}>${esc(s.title)}</option>`).join("");
+  const cur = localStorage.getItem(LS_CUR);
+  const opts = loadSess().map(s =>
+    `<option value="${s.id}" ${s.id === cur ? "selected" : ""}>${esc(s.title)}</option>`).join("");
+  // 无选中时加占位项：否则浏览器默认选第一项，用户再点它 onchange 不触发（假选中）
+  $d("ai-sess-sel").innerHTML = loadSess().some(s => s.id === cur)
+    ? opts
+    : `<option value="" disabled selected>（新对话）</option>` + opts;
 }
 function renderAll() {
   renderSessSel();
@@ -237,8 +242,11 @@ $d("ai-cfg-save").onclick = () => {
 $d("ai-new").onclick = () => { localStorage.setItem(LS_CUR, ""); renderAll(); };
 $d("ai-del").onclick = () => {
   const cur = localStorage.getItem(LS_CUR);
-  saveSess(loadSess().filter(x => x.id !== cur));
-  localStorage.setItem(LS_CUR, ""); renderAll();
+  const rest = loadSess().filter(x => x.id !== cur);
+  saveSess(rest);
+  // 删除后自动切到最后一个剩余会话（而不是空选中——空选中会触发假选中问题）
+  localStorage.setItem(LS_CUR, rest.length ? rest[rest.length - 1].id : "");
+  renderAll();
 };
 $d("ai-sess-sel").onchange = e => { localStorage.setItem(LS_CUR, e.target.value); renderAll(); };
 })();

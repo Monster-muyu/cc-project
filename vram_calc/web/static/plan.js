@@ -7,11 +7,17 @@ let lastPlan = null;
 async function init() {
   [servers, models, gpus] = await Promise.all([
     jget("/api/servers"), jget("/api/models"), jget("/api/gpus")]);
-  $("#p-model").innerHTML = models.filter(m => m.category === "llm")
-    .map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+  fillModelSel();
   fillGpuSelects();
   renderServers();
   bind();
+}
+
+function fillModelSel(keepId) {
+  const cur = keepId || $("#p-model").value;
+  $("#p-model").innerHTML = models.filter(m => m.category === "llm")
+    .map(m => `<option value="${m.id}">${m.name}</option>`).join("");
+  if (cur && models.some(m => m.id === cur)) $("#p-model").value = cur;
 }
 
 const gpuName = id => (gpus.find(g => g.id === id) || {}).name || id;
@@ -23,6 +29,7 @@ function renderServers() {
              ${s.mixed ? "disabled title=\"混插不参与规划\"" : ""}/>
       <div><div class="nm">${s.name}</div><div class="host">${s.host || ""}</div></div>
       ${s.gpus.map(g => `<span class="gpuchip ${s.mixed ? "mixwarn" : ""}">${gpuName(g.gpu_id)} <b>× ${g.count}</b></span>`).join("")}
+      <button class="del" data-edit="${s.id}" title="编辑">✏</button>
       <button class="del" data-del="${s.id}" title="删除">✕</button>
     </div>`).join("") || '<p class="hint">还没有服务器，点下方添加</p>';
   const mixed = servers.filter(s => s.mixed);
@@ -39,6 +46,10 @@ function bind() {
     schedulePlan();
   });
   $("#srv-list").addEventListener("click", async e => {
+    if (e.target.dataset.edit) {
+      openSrvModal(servers.find(s => s.id === e.target.dataset.edit));
+      return;
+    }
     const id = e.target.dataset.del;
     if (!id) return;
     await fetch(`/api/servers/${id}`, {method: "DELETE"});
@@ -47,10 +58,18 @@ function bind() {
     renderServers();
     schedulePlan();
   });
-  $("#btn-add-srv").onclick = openSrvModal;
+  $("#btn-add-srv").onclick = () => openSrvModal();
   $("#sf-add-row").onclick = () => addGpuRow();
+  $("#sf-rows").addEventListener("click", e => {
+    if (!("rmrow" in e.target.dataset)) return;
+    // 至少保留一行 GPU 配置
+    if (document.querySelectorAll("#sf-rows .row").length <= 1) return;
+    e.target.closest(".row").remove();
+  });
   $("#sf-save").onclick = saveSrv;
   $("#btn-plan").onclick = runPlan;
+  $("#btn-fetch-model").onclick = openModelFetch;
+  $("#mf2-go").onclick = fetchAndSaveModel;
   ["#p-ctx", "#p-conc"].forEach(sel => $(sel).addEventListener("input", schedulePlan));
   ["#p-model", "#p-quant", "#p-kvquant"].forEach(sel => $(sel).addEventListener("change", schedulePlan));
   $("#p-util").addEventListener("input", e => {
@@ -96,13 +115,14 @@ function renderPlans({plans, warnings}) {
       <p class="plan-why">${p.why}</p>
       ${(p.warnings || []).map(w => `<div class="warnline">${w}</div>`).join("")}
       <table class="ledger"><thead><tr><th>机器</th><th>卡</th><th class="r">权重/卡</th>
-        <th class="r">开销/卡</th><th class="r">全实例KV池</th><th class="r">占用/可用</th><th>占用</th></tr></thead>
+        <th class="r">开销/卡</th><th class="r">全实例KV池</th><th class="r">每卡占用/可用</th><th>占用</th></tr></thead>
         <tbody>${p.rows.map(r => `
           <tr><td>${r.server_name}</td><td>${r.gpus_used}× ${r.gpu_name}</td>
           <td class="r">${r.weights_gb.toFixed(1)}</td><td class="r">${r.overhead_gb.toFixed(1)}</td>
           <td class="r">${r.kv_budget_gb.toFixed(1)}</td><td class="r">${r.total_gb.toFixed(1)} / ${r.usable_gb.toFixed(1)}</td>
           <td><div class="usebar"><i style="width:${Math.min(100, r.total_gb / r.usable_gb * 100).toFixed(0)}%;background:${barClr}"></i></div></td></tr>`).join("")}
         </tbody></table>
+      <p class="hint">占用/可用均为<b>每卡</b>数值，机器总可用 = 每卡 × 卡数（如 8×RTX 3090 = 8 × 21.6 = 172.8 GB）</p>
       <details class="cmd"><summary>生成启动命令（${p.commands.length} 段）</summary>
         ${p.commands.map(c => `<pre><button class="copybtn" onclick="copyCmd(this)">复制</button>${c.title}\n${c.code}</pre>`).join("")}
       </details>
@@ -116,7 +136,7 @@ function copyCmd(btn) {
   setTimeout(() => btn.textContent = "复制", 1200);
 }
 
-// ---- 添加服务器弹窗 ----
+// ---- 添加/编辑服务器弹窗 ----
 function fillGpuSelects() {
   document.querySelectorAll("#sf-rows select").forEach(sel => {
     sel.innerHTML = gpus.map(g => `<option value="${g.id}">${g.name} (${g.vram_gb}G)</option>`).join("");
@@ -124,31 +144,62 @@ function fillGpuSelects() {
 }
 function addGpuRow(gpuId, count) {
   const row = document.createElement("div");
-  row.className = "row";
-  row.innerHTML = `<select data-g></select><input type="number" data-c min="1" max="128" value="${count || 8}" style="flex:0.5"/>`;
+  row.className = "row sf-row";
+  row.innerHTML = `<select data-g style="flex:1"></select>
+    <span class="gpucnt">卡数</span>
+    <input type="number" data-c min="1" max="128" value="${count || 8}" style="flex:0 0 64px"/>
+    <button type="button" class="del" data-rmrow title="删除此行">✕</button>`;
   $("#sf-rows").appendChild(row);
   fillGpuSelects();
   if (gpuId) row.querySelector("[data-g]").value = gpuId;
 }
-function openSrvModal() {
+function openSrvModal(srv) {                    // srv 传入 = 编辑模式（同 id 保存即覆盖）
+  $("#sf-title").textContent = srv ? "编辑服务器" : "添加服务器";
   $("#sf-rows").innerHTML = "";
-  $("#sf-name").value = ""; $("#sf-host").value = ""; $("#sf-error").textContent = "";
-  addGpuRow();
+  $("#sf-name").value = srv ? srv.id : "";
+  $("#sf-host").value = srv ? srv.host : "";
+  $("#sf-error").textContent = "";
+  (srv && srv.gpus.length ? srv.gpus : [null]).forEach(g => addGpuRow(g && g.gpu_id, g && g.count));
   $("#modal-srv").classList.remove("hidden");
 }
 $("#sf-cancel").onclick = () => $("#modal-srv").classList.add("hidden");
 async function saveSrv() {
+  const name = $("#sf-name").value.trim();
+  if (!name) { $("#sf-error").textContent = "名称必填"; return; }
   const gpusIn = [...document.querySelectorAll("#sf-rows .row")].map(r => ({
     gpu_id: r.querySelector("[data-g]").value, count: +r.querySelector("[data-c]").value || 1}));
   const r = await jpost("/api/servers", {
-    id: $("#sf-name").value.trim(), name: $("#sf-name").value.trim(),
-    host: $("#sf-host").value.trim(), gpus: gpusIn});
+    id: name, name, host: $("#sf-host").value.trim(), gpus: gpusIn});
   if (r.ok) {
     $("#modal-srv").classList.add("hidden");
     servers = await jget("/api/servers");
     renderServers();
+    schedulePlan();
   } else {
     $("#sf-error").textContent = r.error || "保存失败";
+  }
+}
+
+// ---- 拉取模型入库（HF/ModelScope） ----
+function openModelFetch() {
+  $("#mf2-res").textContent = "";
+  $("#modal-mf2").classList.remove("hidden");
+}
+$("#mf2-cancel").onclick = () => $("#modal-mf2").classList.add("hidden");
+async function fetchAndSaveModel() {
+  const repo = $("#mf2-repo").value.trim();
+  const src = $("#mf2-source").value;
+  if (!repo) { $("#mf2-res").textContent = "请填 Repo ID"; return; }
+  $("#mf2-res").textContent = "拉取中…";
+  try {
+    const p = await jget(`/api/models/preview?repo_id=${encodeURIComponent(repo)}&source=${src}`);
+    if (p.error) { $("#mf2-res").textContent = p.error; return; }
+    await jpost("/api/models", p);
+    models = await jget("/api/models");
+    fillModelSel(p.id);
+    $("#modal-mf2").classList.add("hidden");
+  } catch (e) {
+    $("#mf2-res").textContent = `拉取失败: ${e.message}`;
   }
 }
 

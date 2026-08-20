@@ -223,6 +223,10 @@ table.ledger { font-size: 12.5px; }
 .cmd summary { cursor: pointer; font-size: 12.5px; color: #1d5fae; font-weight: 600; }
 .warnline { font-size: 12px; color: #b3423a; background: #fdf1ef; border-radius: 8px;
   padding: 7px 10px; margin-top: 8px; }
+.sf-row { margin: 6px 0; }
+.sf-row .gpucnt { align-self: center; font-size: 12px; color: var(--muted); }
+.sf-row .del { border: none; background: none; color: var(--muted); cursor: pointer;
+  font-size: 14px; padding: 4px 6px; }
 .copybtn { font-size: 11px; color: #9db4d0; background: none; border: 1px solid #2b3a52;
   border-radius: 6px; padding: 2px 8px; cursor: pointer; float: right; }
 .gpuname { font-size: 11.5px; color: var(--muted); }
