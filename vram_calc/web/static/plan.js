@@ -115,11 +115,13 @@ function renderPlans({plans, warnings}) {
       <p class="plan-why">${p.why}</p>
       ${(p.warnings || []).map(w => `<div class="warnline">${w}</div>`).join("")}
       <table class="ledger"><thead><tr><th>机器</th><th>卡</th><th class="r">权重/卡</th>
-        <th class="r">开销/卡</th><th class="r">全实例KV池</th><th class="r">每卡占用/可用</th><th>占用</th></tr></thead>
+        <th class="r">开销/卡</th><th class="r">全实例KV池</th><th class="r">每卡占用/可用</th>
+        <th class="r">机器总占用/总可用</th><th>占用</th></tr></thead>
         <tbody>${p.rows.map(r => `
           <tr><td>${r.server_name}</td><td>${r.gpus_used}× ${r.gpu_name}</td>
           <td class="r">${r.weights_gb.toFixed(1)}</td><td class="r">${r.overhead_gb.toFixed(1)}</td>
           <td class="r">${r.kv_budget_gb.toFixed(1)}</td><td class="r">${r.total_gb.toFixed(1)} / ${r.usable_gb.toFixed(1)}</td>
+          <td class="r"><b>${(r.total_gb * r.gpus_used).toFixed(1)}</b> / ${(r.usable_gb * r.gpus_used).toFixed(1)}</td>
           <td><div class="usebar"><i style="width:${Math.min(100, r.total_gb / r.usable_gb * 100).toFixed(0)}%;background:${barClr}"></i></div></td></tr>`).join("")}
         </tbody></table>
       <p class="hint">占用/可用均为<b>每卡</b>数值，机器总可用 = 每卡 × 卡数（如 8×RTX 3090 = 8 × 21.6 = 172.8 GB）</p>
