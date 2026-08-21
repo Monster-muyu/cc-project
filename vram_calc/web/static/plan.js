@@ -121,10 +121,13 @@ function renderPlans({plans, warnings}) {
         <h3>方案 ${i + 1} · ${p.name}</h3>
         ${i === 0 && p.verdict === "ok" ? '<span class="plan-badge rec">推荐</span>' : ""}
         ${p.badges.map(b => `<span class="plan-badge">${b}</span>`).join("")}
+        ${p.decode_tps > 0 ? `<span class="plan-badge" title="roofline 带宽近似（decode 阶段，含 DP 副本叠加）">≈ ${Math.round(p.decode_tps)} tok/s</span>` : ""}
+        ${p.net ? `<span class="plan-badge" title="跨机通信带宽要求" style="background:#fdf1ef;color:#b3423a">${p.net.split("：")[1] || p.net}</span>` : ""}
         <span class="plan-verdict ${V_CLR[p.verdict]}">${V_TXT[p.verdict]}</span>
       </div>
       <div class="topo">TP=${p.tp} · PP=${p.pp} · EP=${p.ep} · DP=${p.dp}　｜　${p.hosts.map(h => h[0]).join(" + ")}</div>
       <p class="plan-why">${p.why}</p>
+      ${p.net ? `<p class="hint">🌐 ${p.net}</p>` : ""}
       ${(p.warnings || []).map(w => `<div class="warnline">${w}</div>`).join("")}
       <table class="ledger"><thead><tr><th>机器</th><th>卡</th><th class="r">权重/卡</th>
         <th class="r">开销/卡</th><th class="r">全实例KV池</th><th class="r">每卡占用/可用</th>

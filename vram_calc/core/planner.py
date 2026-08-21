@@ -96,6 +96,8 @@ class Plan:
     max_kv_tokens: int; req_tokens: int; concurrency_per_replica: int
     warnings: tuple[str, ...] = ()
     hosts: tuple[tuple[str, str], ...] = ()      # (server_name, host)，Task 4 命令生成用
+    net: str = ""                                # 跨机网络要求提示（单机/DP 为空）
+    decode_tps: float = 0.0                      # roofline 吞吐（含 DP 副本叠加）
 
 
 def _eval_candidate(c: Candidate, inp: PlanInput) -> Plan:
@@ -136,10 +138,17 @@ def _eval_candidate(c: Candidate, inp: PlanInput) -> Plan:
         why = "兜底方案：跨机 TP 需要高带宽互联（万兆/RDMA），普通以太网会很慢。" + why
     badges = {"single": ("单机即可",), "dp": (f"吞吐 ×{dp}",),
               "pp": (f"单实例 {c.tp * c.pp} 卡",), "tp_cross": ("跨机TP·慢",)}[c.category]
+    # 跨机网络要求（知识规则）：TP 每层激活都过网线，PP 每 token 过一次阶段边界
+    net = {"single": "", "dp": "",
+           "pp": "跨机 PP：建议 ≥25Gbps（万兆起）",
+           "tp_cross": "跨机 TP：建议 ≥100Gbps（IB/RoCE）"}[c.category]
+    # roofline 吞吐：单副本 bw/每卡权重 × DP 副本数
+    w0, bw0 = rows[0].weights_gb or 0.0, c.machines[0].gpu.memory_bw_gbps
+    tps = round(0.65 * bw0 / w0 * dp, 1) if bw0 and w0 > 0 else 0.0
     return Plan(c.category, CATEGORY_NAME[c.category], badges, c.tp, c.pp, ep, dp,
                 worst, why, c.category in ("pp", "tp_cross"), tuple(rows),
                 min_kv or 0, req_tokens, conc_rp, tuple(warns),
-                tuple((x.name, x.host) for x in c.machines))
+                tuple((x.name, x.host) for x in c.machines), net, tps)
 
 
 def plan_deployment(inp: PlanInput) -> list[Plan]:

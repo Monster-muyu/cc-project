@@ -221,7 +221,8 @@ function renderResult(r) {
     : (hd >= 0 ? `余 ${hd} GB` : `KV 需求超池子 ${(-hd).toFixed(1)} GB → 会限流`);
   v.innerHTML = `<span class="vbig" style="color:${col}">${txt}</span> 总占用 <b>${r.total_gb} GB</b>${perGpu} ` +
     `/ 可用 ${r.usable_gb} GB（${hdTxt}）` +
-    (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "");
+    (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "") +
+    (r.calibrated ? ` · <span title="引擎开销已按你的真实日志标定">📐已标定</span>` : "");
   $id("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $id("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
   $id("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);
@@ -255,6 +256,7 @@ function renderResult(r) {
     kb.className = "kv-box";
     kb.innerHTML =
       `💾 vLLM 动态 KV:扣掉权重+开销后剩 <b>${r.kv_budget_gb} GB</b> ≈ <b>${fmt(B)}</b> token 位。` +
+      (r.decode_tps > 0 ? ` 预估 decode ≈ <b>${Math.round(r.decode_tps)} tok/s</b><span class="hint">(带宽近似上限)</span>。` : "") +
       ` <span class="hint">并发↔上下文(预算固定,此消彼长,你的并发高亮):</span>` +
       `<table class="kv-tbl"><tbody>${rows}</tbody></table>${rec}` +
       `<div class="rec hint">你当前 ${fctx(uCtx)}×${uConc} = ${fmt(reqNow)} → ${reqNow <= B ? "✓ 在预算内" : "⚠ 超出"}</div>`;
@@ -425,6 +427,26 @@ $id("gf-save").onclick = async () => {
   if (r.error) { $id("gf-error").textContent = r.error; return; }
   $id("modal-gpu").classList.add("hidden");
   await loadDropdowns(); $id("gpu").value = spec.id; recalc();
+};
+
+// ---- calibration (real-log overhead override) ----
+$id("btn-calib").onclick = () => {
+  $id("cb-gpu").innerHTML = [...$id("gpu").options]
+    .map(o => `<option value="${o.value}" ${o.value === $id("gpu").value ? "selected" : ""}>${o.textContent}</option>`).join("");
+  $id("cb-util").value = $id("gpu_util").value;
+  $id("cb-res").textContent = "";
+  $id("modal-calib").classList.remove("hidden");
+};
+$id("cb-cancel").onclick = () => $id("modal-calib").classList.add("hidden");
+$id("cb-go").onclick = async () => {
+  $id("cb-res").className = "hint"; $id("cb-res").textContent = "解析中…";
+  const r = await fetch("/api/calibrate", { method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ gpu_id: $id("cb-gpu").value, util: +$id("cb-util").value,
+                           log_text: $id("cb-log").value }) }).then((r) => r.json());
+  if (r.error) { $id("cb-res").className = "error"; $id("cb-res").textContent = r.error; return; }
+  $id("cb-res").className = "success"; $id("cb-res").textContent = r.note;
+  setTimeout(() => { $id("modal-calib").classList.add("hidden"); recalc(); }, 1200);
 };
 
 init();

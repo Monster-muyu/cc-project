@@ -19,6 +19,27 @@ PKG_DIR = Path(__file__).resolve().parent.parent          # .../vram_calc/
 BUNDLED_DIR = PKG_DIR / "data"
 USER_DIR = Path(os.environ.get("VRAM_CALC_HOME", str(Path.home() / ".vram_calc")))
 
+
+# ---- calibration (real-log engine-overhead overrides) ----
+def load_calibration() -> dict:
+    """{"vllm:rtx-3090": {overhead_gb, weights_gib_at, kv_gib_at, util, date}}"""
+    p = USER_DIR / "calibration.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {}
+
+
+def save_calibration_entry(engine: str, gpu_id: str, entry: dict) -> dict:
+    USER_DIR.mkdir(parents=True, exist_ok=True)
+    data = load_calibration()
+    data[f"{engine}:{gpu_id}"] = entry
+    (USER_DIR / "calibration.json").write_text(
+        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return data
+
 STANDARD_QUANTS = ("fp16", "bf16", "fp8", "int8", "int4",
                    "gguf-q4_k_m", "gguf-q5_k_m", "gguf-q8_0", "exl2")
 

@@ -47,7 +47,8 @@ def render_commands(p: Plan, model_id: str, context_len: int, concurrency: int,
         blocks.append(CommandBlock("其余机器：加入集群",
             "\n".join(f"# {n}（{h or n + '-IP'}）\nray start --address={head_addr}:6379"
                       for n, h in workers)))
-    serve = ("# 前提：所有机器相同 vLLM/NCCL 版本、驱动一致，网络最好万兆+\n"
+    serve = ("# 前提：所有机器相同 vLLM/NCCL 版本、驱动一致\n"
+             + (f"# 网络要求：{p.net}\n" if p.net else "")
              + _serve_args(p, model_id, context_len, gpu_util, kv_quant, True))
     blocks.append(CommandBlock(f"{head[0]}：启动（Ray 自动分配各 stage）", serve))
     return blocks

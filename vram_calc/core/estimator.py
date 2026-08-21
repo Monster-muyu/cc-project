@@ -77,6 +77,7 @@ class EstimateInput:
     safety_factor: float = 0.9
     exl2_bpw: float = 4.0
     max_num_batched_tokens: int = 8192   # vLLM chunked-prefill batch size
+    overhead_override_gb: float | None = None   # 真实日志标定的开销，优先于引擎档案
 
 
 @dataclass(frozen=True)
@@ -105,6 +106,7 @@ class Estimate:
     num_gpus: int              # GPUs holding one model replica (tp*pp*ep_eff)
     kv_budget_gb: float = 0.0  # VRAM left for KV after fixed weights+overhead (pooled tp*pp)
     max_kv_tokens: int = 0     # max KV tokens vLLM-style dynamic allocation can hold
+    decode_tps: float = 0.0    # roofline decode tok/s (bandwidth-bound approximation)
 
 
 def estimate(inp: EstimateInput) -> Estimate:
@@ -140,6 +142,8 @@ def estimate(inp: EstimateInput) -> Estimate:
     eng = get_engine(inp.engine)
     overhead = eng.baseline_gb + min(
         (dense_w + expert_w) * gpu_frac * eng.weight_ratio, eng.cap_gb)
+    if inp.overhead_override_gb is not None:          # 真实日志标定值优先
+        overhead = inp.overhead_override_gb
 
     bd = Breakdown(weights=weights, kv_cache=kv,
                    activation=activation, overhead=overhead)
@@ -169,10 +173,16 @@ def estimate(inp: EstimateInput) -> Estimate:
     else:
         verdict = "tight"
 
+    # roofline decode throughput: bandwidth-bound, 0.65 = KV read + inefficiency factor
+    # per-GPU form (bw / per-GPU weights) equals aggregate form for TP/PP/EP splits
+    per_gpu_w = (dense_w + expert_w) * gpu_frac
+    decode_tps = (round(0.65 * inp.gpu.memory_bw_gbps / per_gpu_w, 1)
+                  if inp.gpu.memory_bw_gbps and per_gpu_w > 0 else 0.0)
+
     return Estimate(breakdown=bd, capacity_gb=capacity, usable_gb=usable,
                     headroom_gb=headroom, verdict=verdict,
                     num_gpus=num_gpus, kv_budget_gb=round(kv_pool_gb, 2),
-                    max_kv_tokens=max_kv_tokens)
+                    max_kv_tokens=max_kv_tokens, decode_tps=decode_tps)
 
 
 if __name__ == "__main__":

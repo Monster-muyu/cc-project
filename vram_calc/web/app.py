@@ -25,7 +25,9 @@ from ..assistant import orchestrator
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
                      save_model, save_gpu, fetch_model_preview, fetch_and_save_many,
                      fetch_modelscope, infer_quant_from_id,
-                     list_servers, get_server, save_server, delete_server)
+                     list_servers, get_server, save_server, delete_server,
+                     load_calibration, save_calibration_entry)
+from ..core.calibration import parse_vllm_log, observed_overhead
 
 BASE = Path(__file__).resolve().parent
 templates = Jinja2Templates(directory=str(BASE / "templates"))
@@ -70,12 +72,15 @@ def _estimate(req: CalcReq):
         raise ValueError(f"未知模型: {req.model_id}")
     if g is None:
         raise ValueError(f"未知显卡: {req.gpu_id}")
+    # 真实日志标定的引擎开销优先（vllm:gpu_id 存在即生效）
+    calib = load_calibration().get(f"{req.engine}:{req.gpu_id}")
     return estimate(EstimateInput(
         model=m, gpu=g, quant=req.quant, context_len=req.context_len,
         concurrency=req.concurrency, engine=req.engine, tp=req.tp, pp=req.pp,
         ep=req.ep, kv_quant=req.kv_quant, cpu_offload=req.cpu_offload,
         safety_factor=req.safety_factor, exl2_bpw=req.exl2_bpw,
-        max_num_batched_tokens=req.max_num_batched_tokens))
+        max_num_batched_tokens=req.max_num_batched_tokens,
+        overhead_override_gb=(calib or {}).get("overhead_gb")))
 
 
 @app.get("/vllm-manual", response_class=HTMLResponse)
@@ -104,6 +109,44 @@ async def index(request: Request):
 @app.get("/plan", response_class=HTMLResponse)
 async def plan_page(request: Request):
     return templates.TemplateResponse(request, "plan.html", {})
+
+
+@app.post("/api/calibrate")
+def api_calibrate(payload: dict):
+    """贴一段真实 vLLM 启动日志 → 解析实测数字 → 存该显卡的引擎开销覆盖值."""
+    log = payload.get("log_text", "")
+    gpu = get_gpu(payload.get("gpu_id", ""))
+    if gpu is None:
+        return JSONResponse({"error": "未知显卡"}, status_code=400)
+    util = float(payload.get("util", 0.9))
+    parsed = parse_vllm_log(log)
+    if parsed["weights_gib"] is None or parsed["kv_pool_gib_per_gpu"] is None:
+        return JSONResponse({
+            "error": "日志里没找到必需行。需要同时包含 "
+                     "'Loading model weights took X GiB' 和 "
+                     "'GPU KV cache size: X MiB' 两行（vLLM 启动时打印）"},
+            status_code=400)
+    ov = observed_overhead(parsed, gpu.vram_gb, util)
+    if ov is None or ov < 0:
+        return JSONResponse({
+            "error": f"算出的引擎开销为 {ov} GB（负数/缺失）：日志数字与所选显卡/利用率"
+                     "对不上。请确认显卡型号、当时的 gpu-memory-utilization，以及日志"
+                     "里的 KV cache 行是 per-GPU 数字（多卡时每张都会打印一行）"},
+            status_code=400)
+    entry = {"overhead_gb": ov, "weights_gib_at": parsed["weights_gib"],
+             "kv_gib_at": parsed["kv_pool_gib_per_gpu"], "util": util,
+             "kv_pool_tokens": parsed["kv_pool_tokens"],
+             "date": payload.get("date", "")}
+    save_calibration_entry("vllm", gpu.id, entry)
+    return {"ok": True, "gpu": gpu.name, "parsed": parsed,
+            "overhead_gb": ov,
+            "note": f"实测开销 {ov} GB/卡（利用率 {util}×{gpu.vram_gb}G − 权重 "
+                    f"{parsed['weights_gib']} − KV池 {parsed['kv_pool_gib_per_gpu']}），已生效"}
+
+
+@app.get("/api/calibrate")
+def api_calibrate_status():
+    return load_calibration()
 
 
 @app.get("/api/models")
@@ -140,6 +183,8 @@ def api_calc(req: CalcReq):
         "num_gpus": n,
         "max_kv_tokens": r.max_kv_tokens,
         "kv_budget_gb": round(r.kv_budget_gb, 2),
+        "decode_tps": r.decode_tps,
+        "calibrated": bool(load_calibration().get(f"{req.engine}:{req.gpu_id}")),
     }
 
 

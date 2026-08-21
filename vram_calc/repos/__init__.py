@@ -6,6 +6,7 @@ from .store import (
     list_servers, get_server, save_server, delete_server,
     fetch_model_preview, fetch_and_save_many, fetch_modelscope,
     infer_quant_from_id,
+    load_calibration, save_calibration_entry,
 )
 
 __all__ = [
@@ -14,4 +15,5 @@ __all__ = [
     "list_servers", "get_server", "save_server", "delete_server",
     "fetch_model_preview", "fetch_and_save_many", "fetch_modelscope",
     "infer_quant_from_id",
+    "load_calibration", "save_calibration_entry",
 ]
