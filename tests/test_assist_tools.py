@@ -57,3 +57,8 @@ def test_build_system_prompt_injects():
 def test_build_system_prompt_null_ctx():
     sp = prompts.build_system_prompt(None)
     assert "手册页" in sp
+
+def test_contract_has_context_policy():
+    sp = prompts.build_system_prompt(None)
+    assert "不要拿模型原生上限当推荐值" in sp     # 上下文推荐以用户目标为准
+    assert "32k 起步" in sp                       # 现代基线
