@@ -80,7 +80,6 @@ function bind() {
     e.target.closest(".row").remove();
   });
   $("#sf-save").onclick = saveSrv;
-  $("#btn-plan").onclick = runPlan;
   $("#btn-fetch-model").onclick = openModelFetch;
   $("#mf2-go").onclick = fetchAndSaveModel;
   ["#p-ctx", "#p-conc"].forEach(sel => $(sel).addEventListener("input", schedulePlan));
@@ -138,6 +137,10 @@ function renderPlans({plans, warnings}) {
           <td><div class="usebar"><i style="width:${Math.min(100, r.total_gb / r.usable_gb * 100).toFixed(0)}%;background:${barClr}"></i></div></td></tr>`).join("")}
         </tbody></table>
       <p class="hint">占用/可用均为<b>每卡</b>数值，机器总可用 = 每卡 × 卡数（如 8×RTX 3090 = 8 × 21.6 = 172.8 GB）</p>
+      <details class="conc"><summary>📈 并发敏感度（KV 需求 = 上下文×并发 vs 本方案池容量）</summary>
+        ${p.max_kv_tokens ? concChart(p.max_kv_tokens, parseContext($("#p-ctx").value) || 4096)
+                          : '<p class="hint">该方案无 KV 池数据</p>'}
+      </details>
       <details class="cmd"><summary>生成启动命令（${p.commands.length} 段）</summary>
         ${p.commands.map(c => `<pre><button class="copybtn" onclick="copyCmd(this)">复制</button>${c.title}\n${c.code}</pre>`).join("")}
       </details>
@@ -149,6 +152,31 @@ function copyCmd(btn) {
   navigator.clipboard.writeText(btn.parentElement.textContent.replace(/^复制/, "").trim());
   btn.textContent = "已复制";
   setTimeout(() => btn.textContent = "复制", 1200);
+}
+
+// ---- 并发敏感度小图：KV 需求(上下文×并发) vs 本方案池容量 ----
+function concChart(maxTokens, ctx) {
+  const ceil = Math.floor(maxTokens / ctx);            // 当前上下文最大并发
+  const x1 = Math.max(ceil * 2, Math.max(8, Math.ceil(ceil * 1.3) + 1));
+  const W = 540, H = 130, padL = 46, padR = 12, padT = 10, padB = 22;
+  const X = x => padL + (x - 1) / (x1 - 1) * (W - padL - padR);
+  const Y = t => H - padB - Math.min(t / (ctx * x1), 1.05) * (H - padT - padB);
+  let pts = "";
+  for (let x = 1; x <= x1; x++) pts += `${X(x).toFixed(1)},${Y(ctx * x).toFixed(1)} `;
+  const by = Math.max(Y(maxTokens), padT);
+  return `
+  <p class="hint" style="margin:2px 0 6px">并发承载：本方案 KV 池 <b>${maxTokens.toLocaleString()}</b> tokens
+    · 当前上下文 ${ctx.toLocaleString()} → <b>最多 ${ceil} 路并发</b></p>
+  <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:${W}px">
+    <line x1="${padL}" y1="${by}" x2="${W - padR}" y2="${by}" stroke="#2a78d6" stroke-width="2" stroke-dasharray="6 4"/>
+    <text x="${W - padR}" y="${by - 4}" text-anchor="end" font-size="11" fill="#2a78d6">池容量 ${(maxTokens / 1000).toFixed(0)}k</text>
+    <polyline points="${pts}" fill="none" stroke="#eb6834" stroke-width="2"/>
+    ${ceil >= 1 && ceil <= x1 ? `<circle cx="${X(ceil)}" cy="${Y(ctx * ceil)}" r="4" fill="#eb6834"/>
+      <text x="${X(ceil) - 6}" y="${Y(ctx * ceil) - 7}" text-anchor="end" font-size="11" fill="#b34a1f">≈${ceil} 路</text>` : ""}
+    <text x="${padL - 6}" y="${H - padB + 4}" text-anchor="end" font-size="11" fill="#898781">1</text>
+    <text x="${X(x1)}" y="${H - padB + 16}" text-anchor="middle" font-size="11" fill="#898781">${x1}</text>
+    <text x="${(padL + W - padR) / 2}" y="${H - 2}" text-anchor="middle" font-size="11" fill="#898781">并发数 →</text>
+  </svg>`;
 }
 
 // ---- 添加/编辑服务器弹窗 ----
