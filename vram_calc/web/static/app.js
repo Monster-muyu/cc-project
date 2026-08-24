@@ -31,6 +31,10 @@ function syncParallelHint() {
   // vLLM/SGLang require total attention heads % TP == 0 (odd GPU counts often fail)
   const eng = $id("engine").value;
   const m = currentModel();
+  // llama.cpp/Ollama：TP/EP 输入禁用（引擎不支持，防误配）
+  const layerOnly = eng === "llama_cpp" || eng === "ollama";
+  $id("tp").disabled = layerOnly;
+  $id("ep").disabled = layerOnly;
   if ((eng === "vllm" || eng === "sglang") && m && m.attn_heads && t > 1 && m.attn_heads % t !== 0)
     msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
   th.textContent = msgs.join("; ");
@@ -53,12 +57,20 @@ function rebalanceParallel(changed) {
   let t = Math.max(1, +$id("tp").value || 1);
   let p = Math.max(1, +$id("pp").value || 1);
   let e = Math.max(1, +$id("ep").value || 1);
+  const eng = $id("engine").value;
+  if (eng === "llama_cpp" || eng === "ollama") {
+    // 该引擎多卡只按层切分：强制 TP=EP=1、PP=卡数
+    $id("tp").value = 1; $id("pp").value = n; $id("ep").value = 1;
+    $id("parallel-hint").textContent =
+      `${eng === "llama_cpp" ? "llama.cpp" : "Ollama"} 多卡 = 按层切分：TP/EP 不可用，PP=${n}`;
+    syncParallelHint();
+    return;
+  }
   if (!moe) e = 1;                       // EP is meaningless for dense models
   // the dimension the user just set wins; the remaining one absorbs the residue
   const residue = Math.max(1, Math.floor(n / (t * (moe ? e : 1))));
-  const residueE = Math.max(1, Math.floor(n / (t * p)));
   if (changed === "tp") { p = residue; if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
-  else if (changed === "pp") { t = Math.max(1, Math.floor(n / p)); if (moe) e = 1; if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
+  else if (changed === "pp") { t = Math.max(1, Math.floor(n / p)); if (moe) e = Math.max(1, Math.floor(n / (t * p))); }
   else if (changed === "ep") { if (moe) { t = Math.max(1, Math.floor(n / e)); p = Math.max(1, Math.floor(n / (t * e))); } }
   $id("tp").value = t; $id("pp").value = p; $id("ep").value = e;
   const used = t * p * (moe ? e : 1);
@@ -74,7 +86,13 @@ function applyParallelStrategy() {
   $id("tp").value = 1; $id("pp").value = 1; $id("ep").value = 1;
   const hint = $id("parallel-hint");
   if (n === 1) { hint.textContent = "单卡部署。模型放不下时调高显卡数量分摊。"; syncParallelHint(); return; }
-  if (currentModelIsMoe()) {
+  const eng = $id("engine").value;
+  if (eng === "llama_cpp" || eng === "ollama") {
+    // llama.cpp/Ollama 多卡 = 按层切分（--tensor-split / 自动分层），对应 PP 语义；
+    // 不支持张量并行（TP）与专家并行（EP）
+    $id("pp").value = n;
+    hint.textContent = `${n} 卡按层切分（${eng === "llama_cpp" ? "--tensor-split" : "Ollama 自动"}）：TP/EP 不可用，层跨卡 = PP=${n}`;
+  } else if (currentModelIsMoe()) {
     $id("ep").value = n;
     hint.textContent = `${n} 卡专家并行(EP)：每卡只装 1/${n} 的专家权重`;
   } else {
@@ -189,7 +207,7 @@ function bindEvents() {
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
       if (id === "tp" || id === "pp" || id === "ep") rebalanceParallel(id);
-      if (id === "engine") syncParallelHint();
+      if (id === "engine") applyParallelStrategy();   // 引擎切换重排并行（llama/ollama 强制按层）
       if (id === "gpu" || id === "quant" || id === "kv_quant" || id === "engine") syncGpuCapability();
       debounced();
     }));
