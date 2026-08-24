@@ -89,3 +89,53 @@ def test_calibrate_api_roundtrip(tmp_path):
                                      "gpu_id": "rtx-3090", "quant": "fp16",
                                      "context_len": 4096})
     assert r2.json()["calibrated"] is True
+
+def test_sglang_plan_commands():
+    from vram_calc.core.planner import Machine, PlanInput, plan_deployment
+    from vram_calc.core.commands import render_commands
+    from vram_calc.core.estimator import ModelSpec, GpuSpec
+    m = ModelSpec(id="t/8b", name="8B", params_b=8.0, layers=32, hidden_dim=4096,
+                  attn_heads=32, kv_heads=8, head_dim=128)
+    g = GpuSpec(id="g8", name="8G", vram_gb=8, memory_bw_gbps=300)
+    plans = plan_deployment(PlanInput(
+        model=m, machines=(Machine("a", "A", "10.0.0.1", g, 2), Machine("b", "B", "10.0.0.2", g, 2)),
+        context_len=4096, engine="sglang"))
+    pp = [p for p in plans if p.key == "pp"][0]
+    blocks = render_commands(pp, "t/8b", 4096, 1, 0.9, "fp16", "sglang")
+    texts = [b.code for b in blocks]
+    assert any("sglang.launch_server" in t and "--nnodes 2" in t for t in texts)
+    assert any("--node-rank 1" in t for t in texts)          # 每台机器各自带 rank
+    assert any("--dist-init-addr 10.0.0.1:5000" in t for t in texts)
+    assert not any("ray start" in t for t in texts)          # SGLang 不走 Ray
+    # 单机 SGLang 也生成 launch_server
+    single = plan_deployment(PlanInput(model=m,
+        machines=(Machine("a", "A", "", GpuSpec(id="g24", name="24G", vram_gb=24, memory_bw_gbps=936), 8),),
+        context_len=4096, engine="sglang"))[0]
+    code = render_commands(single, "t/8b", 4096, 1, 0.9, "fp8", "sglang")[0].code
+    assert "sglang.launch_server" in code and "fp8_e5m2" in code
+
+
+def test_manual_engine_pages():
+    from fastapi.testclient import TestClient
+    from vram_calc.web.app import app
+    cli = TestClient(app)
+    for eng, tag in (("sglang", "SGLang"), ("llamacpp", "llama.cpp"), ("ollama", "Ollama")):
+        r = cli.get(f"/vllm-manual?engine={eng}")
+        assert r.status_code == 200
+        assert eng in r.text and tag in r.text
+    assert "vLLM" in cli.get("/vllm-manual").text
+
+
+def test_plan_api_engine_passthrough(tmp_path):
+    import vram_calc.repos.store as store
+    from fastapi.testclient import TestClient
+    from vram_calc.web.app import app
+    store.servers.user_dir = tmp_path / "s"
+    store.save_server(store.ServerSpec(id="srv-a", name="A", host="10.0.0.1",
+                      gpus=(store.GpuCount("rtx-3090", 8),)))
+    cli = TestClient(app)
+    r = cli.post("/api/plan", json={"model_id": "meta-llama/Meta-Llama-3-8B",
+                                    "server_ids": ["srv-a"], "context_len": 4096,
+                                    "engine": "sglang"})
+    assert r.status_code == 200
+    assert any("sglang" in c["code"] for p in r.json()["plans"] for c in p["commands"])

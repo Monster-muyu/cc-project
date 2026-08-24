@@ -84,9 +84,18 @@ def _estimate(req: CalcReq):
 
 
 @app.get("/vllm-manual", response_class=HTMLResponse)
-async def vllm_params_page(request: Request):
-    data = json.loads((BASE.parent / "data" / "vllm_params.json").read_text(encoding="utf-8"))
-    return templates.TemplateResponse(request, "vllm_params.html", {"data": data})
+async def vllm_params_page(request: Request, engine: str = "vllm"):
+    """参数手册：engine=vllm 走 vllm_params.json；llamacpp/ollama/sglang 走 engine_params.json"""
+    if engine == "vllm":
+        data = json.loads((BASE.parent / "data" / "vllm_params.json").read_text(encoding="utf-8"))
+        name = "vLLM"
+    else:
+        all_e = json.loads((BASE.parent / "data" / "engine_params.json").read_text(encoding="utf-8"))
+        data = all_e.get(engine) or all_e["llamacpp"]
+        engine = "vllm" if "categories" not in data else engine
+        name = data.get("name", engine)
+    return templates.TemplateResponse(request, "vllm_params.html",
+                                      {"data": data, "engine": engine, "engine_name": name})
 
 
 # old path stuck in browsers' heuristic cache during the layout iterations --
@@ -276,6 +285,7 @@ class PlanReq(BaseModel):
     kv_quant: str = "fp16"
     gpu_util: float = 0.9
     max_num_batched_tokens: int = 8192
+    engine: str = "vllm"
 
 
 @app.get("/api/servers")
@@ -327,13 +337,14 @@ def api_plan(req: PlanReq):
     plans = plan_deployment(PlanInput(
         model=m, machines=tuple(machines), context_len=req.context_len,
         concurrency=req.concurrency, quant=req.quant, kv_quant=req.kv_quant,
-        gpu_util=req.gpu_util,
-        max_num_batched_tokens=req.max_num_batched_tokens)) if machines else []
+        gpu_util=req.gpu_util, max_num_batched_tokens=req.max_num_batched_tokens,
+        engine=req.engine)) if machines else []
     out = []
     for p in plans:
         d = asdict(p)
         d["commands"] = [asdict(b) for b in render_commands(
-            p, req.model_id, req.context_len, req.concurrency, req.gpu_util, req.kv_quant)]
+            p, req.model_id, req.context_len, req.concurrency, req.gpu_util,
+            req.kv_quant, req.engine)]
         out.append(d)
     return {"plans": out, "warnings": warnings}
 

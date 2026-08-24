@@ -83,7 +83,7 @@ function bind() {
   $("#btn-fetch-model").onclick = openModelFetch;
   $("#mf2-go").onclick = fetchAndSaveModel;
   ["#p-ctx", "#p-conc"].forEach(sel => $(sel).addEventListener("input", schedulePlan));
-  ["#p-model", "#p-quant", "#p-kvquant"].forEach(sel => $(sel).addEventListener("change", schedulePlan));
+  ["#p-model", "#p-quant", "#p-kvquant", "#p-engine"].forEach(sel => $(sel).addEventListener("change", schedulePlan));
   $("#p-util").addEventListener("input", e => {
     $("#p-util-val").textContent = Math.round(e.target.value * 100) + "%";
     schedulePlan();
@@ -102,7 +102,7 @@ async function runPlan() {
     context_len: parseContext($("#p-ctx").value) || 4096,
     concurrency: Math.max(1, +$("#p-conc").value || 1),
     quant: $("#p-quant").value, kv_quant: $("#p-kvquant").value,
-    gpu_util: +$("#p-util").value});
+    gpu_util: +$("#p-util").value, engine: $("#p-engine").value});
   lastPlan = r;
   renderPlans(r);
 }

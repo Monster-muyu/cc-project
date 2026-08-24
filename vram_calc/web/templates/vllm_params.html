@@ -3,10 +3,15 @@
 <head>
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>vLLM 常用参数手册 — VRAM 显存计算工具</title>
+  <title>{{ engine_name }} 常用参数手册 — VRAM 显存计算工具</title>
   <link rel="stylesheet" href="/static/style.css?v=22"/>
   <style>
     body { font-family: "Microsoft YaHei", "微软雅黑", "PingFang SC", sans-serif; }
+    .eng-tabs { display: flex; gap: 6px; }
+    .eng-tabs a { padding: 6px 16px; border-radius: 8px; text-decoration: none;
+      font-size: 13px; color: var(--ink-2); background: var(--surface);
+      border: 1px solid var(--border); }
+    .eng-tabs a.on { background: var(--brand); color: #fff; border-color: var(--brand); font-weight: 600; }
     .layout { max-width: 1180px; margin: 0 auto; padding: 0 22px; display: grid;
       grid-template-columns: 216px 1fr; gap: 34px; align-items: start; }
 
@@ -75,16 +80,25 @@
 <header>
   <div class="head-inner">
     <div class="brand">
-      <h1>vLLM 参数手册</h1>
+      <h1>{{ engine_name }} 参数手册</h1>
       <span class="sub">常用参数 · 核对自官方文档</span>
     </div>
     <nav class="tabs">
       <a href="/">单机估算</a>
       <a href="/plan">多机规划</a>
-      <a href="/vllm-manual" class="on">vLLM 参数</a>
+      <a href="/vllm-manual{% if engine != 'vllm' %}?engine={{ engine }}{% endif %}" class="on">参数手册</a>
     </nav>
   </div>
 </header>
+
+<div style="max-width:1180px;margin:0 auto;padding:14px 22px 0">
+  <nav class="eng-tabs">
+    <a href="/vllm-manual" class="{{ 'on' if engine == 'vllm' else '' }}">vLLM</a>
+    <a href="/vllm-manual?engine=sglang" class="{{ 'on' if engine == 'sglang' else '' }}">SGLang</a>
+    <a href="/vllm-manual?engine=llamacpp" class="{{ 'on' if engine == 'llamacpp' else '' }}">llama.cpp</a>
+    <a href="/vllm-manual?engine=ollama" class="{{ 'on' if engine == 'ollama' else '' }}">Ollama</a>
+  </nav>
+</div>
 <div class="layout" style="margin-top:18px">
   <nav class="toc">
     <div class="toc-box">
@@ -99,12 +113,12 @@
     <span><b>{{ data.categories | length }}</b>分类</span>
     <span><b>{{ data.categories | map(attribute='params') | map('length') | sum }}</b>参数</span>
     <span><b>{{ data.categories | map(attribute='params') | sum(start=[]) | selectattr('modeled') | list | length }}</b>已接入计算器</span>
-    <span class="hint">版式 v4 · 核对自 docs.vllm.ai (stable, {{ data.updated }}) · 默认值随硬件/版本变化，标 * 见说明</span>
+    <span class="hint">版式 v4 · 核对自官方文档 ({{ data.updated or '2026-08' }}) · 默认值随硬件/版本变化，标 * 见说明</span>
   </div>
   {% for cat in data.categories %}
   <section class="chapter" id="{{ cat.id }}">
     <h2><span class="no">{{ '%02d' % loop.index }}</span>{{ cat.name }}<span class="count">{{ cat.params | length }} 项</span></h2>
-    <p class="lead">vLLM 启动参数 · {{ cat.name }}</p>
+    <p class="lead">{{ engine_name }} 启动参数 · {{ cat.name }}</p>
     {% for p in cat.params %}
     <article class="param">
       <h3>{{ p.flag }}{% if p.modeled %}<span class="modeled">本计算器</span>{% endif %}</h3>

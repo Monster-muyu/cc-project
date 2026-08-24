@@ -78,6 +78,7 @@ class PlanInput:
     kv_quant: str = "fp16"
     gpu_util: float = 0.9
     max_num_batched_tokens: int = 8192
+    engine: str = "vllm"            # vllm | sglang（多机支持的引擎）
 
 
 @dataclass(frozen=True)
@@ -109,7 +110,7 @@ def _eval_candidate(c: Candidate, inp: PlanInput) -> Plan:
     for mach_ in c.machines:
         est = estimate(EstimateInput(
             model=m, gpu=mach_.gpu, quant=inp.quant, context_len=inp.context_len,
-            concurrency=conc_rp, engine="vllm", tp=c.tp, pp=c.pp, ep=ep,
+            concurrency=conc_rp, engine=inp.engine, tp=c.tp, pp=c.pp, ep=ep,
             kv_quant=inp.kv_quant, safety_factor=inp.gpu_util,
             max_num_batched_tokens=inp.max_num_batched_tokens))
         b = est.breakdown

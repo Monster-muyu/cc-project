@@ -31,6 +31,11 @@
     <p class="hint">勾选参与规划的服务器入库保存，下次直接选；host 仅用于生成启动命令</p>
 
     <h2 style="margin-top:18px">🎯 规划目标</h2>
+    <label>推理引擎 <select id="p-engine">
+      <option value="vllm">vLLM</option>
+      <option value="sglang">SGLang</option>
+    </select></label>
+    <p class="hint">多机只支持 vLLM/SGLang；Ollama 与 llama.cpp 为单机引擎，请用「单机估算」页</p>
     <div class="row" style="align-items:flex-end">
       <label style="flex:1">模型 <select id="p-model"></select></label>
       <button id="btn-fetch-model" title="从 HuggingFace/ModelScope 按 Repo ID 拉取并入库">＋ 拉取</button>

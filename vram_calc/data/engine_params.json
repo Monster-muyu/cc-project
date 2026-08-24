@@ -1,0 +1,105 @@
+{
+  "source": "llama.cpp / Ollama / SGLang 官方文档",
+  "updated": "2026-08",
+  "llamacpp": {
+    "name": "llama.cpp (llama-server)",
+    "categories": [
+      {
+        "id": "lc-load",
+        "name": "模型加载",
+        "params": [
+          {"flag": "-m, --model", "type": "str", "default": "必填", "desc": "GGUF 模型文件路径", "tip": "量化等级在文件名里（Q4_K_M 等），对应本计算器 gguf-q4_k_m 等选项", "modeled": false},
+          {"flag": "-ngl, --n-gpu-layers", "type": "int", "default": "0 / 全部*", "desc": "offload 到 GPU 的层数。*新版本默认全部，老版本默认 0", "tip": "显存不够就调小层数（本计算器「CPU offload」滑杆即此参数）；-1 或大数=全卸载", "modeled": true},
+          {"flag": "--tensor-split", "type": "str", "default": "自动均分", "desc": "多卡切分比例，如 \"1,1\" 两卡均分", "tip": "异构卡按显存比例分，如 \"3,1\"", "modeled": false},
+          {"flag": "--split-mode", "type": "str", "default": "layer", "desc": "多卡模式：layer（按层分，默认）/ row（张量并行）", "tip": "row 模式还慢且不稳，多卡默认用 layer", "modeled": false},
+          {"flag": "--mlock", "type": "bool", "default": "False", "desc": "锁定模型权重在内存，禁止换出", "tip": "大模型内存富余时防抖动", "modeled": false}
+        ]
+      },
+      {
+        "id": "lc-ctx",
+        "name": "上下文与 KV",
+        "params": [
+          {"flag": "-c, --ctx-size", "type": "int", "default": "4096", "desc": "上下文窗口。注意：llama.cpp 启动即预分配 KV（与 vLLM 动态池不同）", "tip": "总 KV 显存 = ctx × --parallel，一次占满（本计算器「上下文」）", "modeled": true},
+          {"flag": "-np, --parallel", "type": "int", "default": "1", "desc": "并发槽位数，每个槽位独占一份 ctx 窗口的 KV", "tip": "总 KV = ctx × np；配合 --cont-batching（本计算器「并发」）", "modeled": true},
+          {"flag": "--cache-type-k / --cache-type-v", "type": "str", "default": "f16", "desc": "KV 缓存量化：f16/q8_0/q4_0", "tip": "V 缓存量化必须配合 --flash-attn；q8_0 省一半且精度损失很小", "modeled": true},
+          {"flag": "-fa, --flash-attn", "type": "bool", "default": "False", "desc": "FlashAttention 内核", "tip": "开 KV 量化的前置条件；本身也省显存提速", "modeled": false},
+          {"flag": "--cont-batching", "type": "bool", "default": "True(新版)", "desc": "连续批处理：请求边生成边入批", "tip": "老版本必须显式开启才有并发能力", "modeled": false}
+        ]
+      },
+      {
+        "id": "lc-perf",
+        "name": "性能与网络",
+        "params": [
+          {"flag": "-b, --batch-size", "type": "int", "default": "2048", "desc": "逻辑批大小（prompt 处理的 token 批）", "tip": "大 ctx 提升吞吐用，激活显存随之增加", "modeled": false},
+          {"flag": "-t, --threads", "type": "int", "default": "CPU核数", "desc": "CPU 计算线程数", "tip": "纯 GPU 推理时影响小", "modeled": false},
+          {"flag": "--host / --port", "type": "str/int", "default": "127.0.0.1/8080", "desc": "服务监听地址与端口", "tip": "对外服务改 0.0.0.0", "modeled": false},
+          {"flag": "--slots / --slot-save-path", "type": "bool/str", "default": "False/空", "desc": "开启 slot 状态保存（多请求隔离与断点）", "tip": "长会话多用户场景", "modeled": false}
+        ]
+      }
+    ]
+  },
+  "ollama": {
+    "name": "Ollama",
+    "categories": [
+      {
+        "id": "ol-env",
+        "name": "服务环境变量",
+        "params": [
+          {"flag": "OLLAMA_NUM_PARALLEL", "type": "int", "default": "4(新版)/1(旧)", "desc": "并发请求数，每请求独占一份上下文窗口 KV", "tip": "总 KV = num_ctx × 并发；显存紧就调 1（本计算器「并发」）", "modeled": true},
+          {"flag": "OLLAMA_CONTEXT_LENGTH", "type": "int", "default": "4096", "desc": "默认上下文长度（新版环境变量；旧版只能在 Modelfile/请求里给 num_ctx）", "tip": "本计算器「上下文」；Ollama 同样是启动即预分配 KV", "modeled": true},
+          {"flag": "OLLAMA_KV_CACHE_TYPE", "type": "str", "default": "f16", "desc": "KV 量化：f16 / q8_0 / q4_0", "tip": "q8_0 省一半 KV；需先开 FlashAttention（本计算器「KV 量化」）", "modeled": true},
+          {"flag": "OLLAMA_FLASH_ATTENTION", "type": "0/1", "default": "0", "desc": "FlashAttention 开关", "tip": "KV 量化的前置条件", "modeled": false},
+          {"flag": "OLLAMA_MAX_LOADED_MODELS", "type": "int", "default": "3×GPU数", "desc": "同时常驻显存的模型数", "tip": "多模型共卡时调小；每个模型独立占权重+KV", "modeled": false},
+          {"flag": "OLLAMA_GPU_OVERHEAD", "type": "int", "default": "0", "desc": "每卡预留显存（字节），给其它进程留余量", "tip": "卡上有监控/桌面进程时设置；估算时相当于降低可用显存", "modeled": false},
+          {"flag": "OLLAMA_HOST", "type": "str", "default": "127.0.0.1:11434", "desc": "服务监听地址", "tip": "对外服务改 0.0.0.0:11434", "modeled": false}
+        ]
+      },
+      {
+        "id": "ol-model",
+        "name": "Modelfile / 请求参数",
+        "params": [
+          {"flag": "num_ctx", "type": "int", "default": "4096(新)/2048(旧)", "desc": "Modelfile 或 API 请求里的上下文窗口", "tip": "API 每请求可覆盖：options.num_ctx（本计算器「上下文」）", "modeled": true},
+          {"flag": "num_gpu", "type": "int", "default": "自动(全部层)", "desc": "offload 到 GPU 的层数（-1=全部，Ollama 会自动探测）", "tip": "显存不够时调小（本计算器「CPU offload」）", "modeled": true},
+          {"flag": "num_thread / num_batch", "type": "int", "default": "自动/512", "desc": "CPU 线程数 / 批大小（透传 llama.cpp）", "tip": "一般不动", "modeled": false},
+          {"flag": "keep_alive", "type": "duration", "default": "5m", "desc": "请求结束后模型在显存驻留时长", "tip": "常驻服务设 -1（永不清除）；0=用完即卸", "modeled": false}
+        ]
+      }
+    ]
+  },
+  "sglang": {
+    "name": "SGLang",
+    "categories": [
+      {
+        "id": "sg-load",
+        "name": "模型加载",
+        "params": [
+          {"flag": "--model-path", "type": "str", "default": "必填", "desc": "模型路径或 HF 仓库名", "tip": "量化仓库自动识别（AWQ/GPTQ/FP8）", "modeled": false},
+          {"flag": "--context-length", "type": "int", "default": "模型上限", "desc": "覆盖上下文窗口长度", "tip": "截小于模型上限可省一点调度开销（本计算器「上下文」）", "modeled": true},
+          {"flag": "--kv-cache-dtype", "type": "str", "default": "auto", "desc": "KV 精度：auto / fp8_e5m2 / fp8_e4m3", "tip": "FP8 KV 同样需要显卡 FP8 硬件（本计算器「KV 量化」）", "modeled": true},
+          {"flag": "--mem-fraction-static", "type": "float", "default": "0.88*", "desc": "静态显存占比（权重+KV 池）。*随版本/显存变化", "tip": "语义同 vLLM 的 gpu_memory_utilization（本计算器「显存利用率」）", "modeled": true}
+        ]
+      },
+      {
+        "id": "sg-parallel",
+        "name": "并行与多机",
+        "params": [
+          {"flag": "--tp / --tp-size", "type": "int", "default": "1", "desc": "张量并行卡数", "tip": "要求注意力头数整除（本计算器已校验）", "modeled": true},
+          {"flag": "--dp / --dp-size", "type": "int", "default": "1", "desc": "数据并行副本数（与 tp 组合成 dp×tp 总卡）", "tip": "吞吐优先就加 dp，KV 池按副本独立", "modeled": true},
+          {"flag": "--ep-size", "type": "int", "default": "1", "desc": "MoE 专家并行", "tip": "MoE 模型降每卡权重（本计算器 EP）", "modeled": true},
+          {"flag": "--dist-init-addr / --nnodes / --node-rank", "type": "str/int", "default": "无/1/0", "desc": "多机分布式初始化：主节点地址:端口、总节点数、当前节点序号", "tip": "SGLang 多机不依赖 Ray，每台机器用 launch_server 直接带这三个参数", "modeled": false}
+        ]
+      },
+      {
+        "id": "sg-sched",
+        "name": "批处理与性能",
+        "params": [
+          {"flag": "--max-running-requests", "type": "int", "default": "动态", "desc": "最大并发运行请求数", "tip": "本计算器「并发」；受 KV 池约束", "modeled": true},
+          {"flag": "--chunked-prefill-size", "type": "int", "default": "8192(新)", "desc": "分块 prefill 的块大小", "tip": "长上下文降首 token 延迟（对应 vLLM max_num_batched_tokens）", "modeled": true},
+          {"flag": "--cuda-graph-max-bs", "type": "int", "default": "随显存", "desc": "CUDA graph 捕获的最大 batch", "tip": "小显存卡调小可省捕获显存", "modeled": false},
+          {"flag": "--enable-torch-compile", "type": "bool", "default": "False", "desc": "torch.compile 编译加速", "tip": "启动变慢、吞吐提升；小 batch 场景收益明显", "modeled": false},
+          {"flag": "--host / --port", "type": "str/int", "default": "127.0.0.1/30000", "desc": "服务监听地址与端口", "tip": "对外服务改 0.0.0.0", "modeled": false}
+        ]
+      }
+    ]
+  }
+}
