@@ -10,12 +10,18 @@ import logging
 from .providers import LLMConfig, get_provider, humanize_llm_error, TextDelta, ToolCall
 from .tools import tools_for, execute_tool
 from .prompts import build_system_prompt
+from . import guard
 
 MAX_TOOL_ROUNDS = 5
 log = logging.getLogger(__name__)
 
 
 def run_chat(cfg: LLMConfig, messages: list[dict], page_ctx: dict | None):
+    # 注入拦截在 provider 构造之前：命中即不消耗任何 LLM 调用
+    if guard.input_blocked(messages):
+        yield {"t": "delta", "v": guard.REFUSAL}
+        yield {"t": "done", "rounds": 0}
+        return
     try:
         provider = get_provider(cfg)
         convo = [{"role": "system", "content": build_system_prompt(page_ctx)}] + list(messages)
@@ -24,6 +30,10 @@ def run_chat(cfg: LLMConfig, messages: list[dict], page_ctx: dict | None):
             for ev in provider.chat_stream(convo, tools_for(page_ctx)):
                 if isinstance(ev, TextDelta) and ev.text:
                     text_acc += ev.text
+                    if guard.leaks(text_acc):                 # 累积文本出现提示词原文 → 截断
+                        yield {"t": "delta", "v": guard.TRUNCATED}
+                        yield {"t": "done", "rounds": round_i + 1}
+                        return
                     yield {"t": "delta", "v": ev.text}
                 elif isinstance(ev, ToolCall):
                     calls.append(ev)
