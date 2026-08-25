@@ -58,6 +58,32 @@ def test_chat_endpoint_short_circuits():
     assert '"t": "error"' not in r.text
 
 
+def test_kv_quant_menu():
+    """KV 精度：vLLM/SGLang 无 int8；llama.cpp/Ollama 有 q8_0/q4_0；字节表覆盖全部档位。"""
+    from vram_calc.core.quant import KV_BYTES, bytes_per_kv
+    from vram_calc.web.app import KV_QUANTS
+    assert "int8" not in KV_QUANTS and set(KV_QUANTS) <= {"fp16", "fp8"}   # vLLM/SGLang 档位
+    assert KV_BYTES["q8_0"] == 8.5 / 8 and KV_BYTES["q4_0"] == 4.5 / 8
+    assert bytes_per_kv("q8_0") > bytes_per_kv("fp8")    # q8_0 块量化略大于裸 fp8
+    try:
+        bytes_per_kv("int8"); assert False, "int8 KV 应被拒绝"
+    except ValueError:
+        pass
+
+
+def test_llamacpp_kv_estimate():
+    """llama.cpp 选 q8_0 时 KV 按块量化字节算。"""
+    from vram_calc.core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate
+    m = ModelSpec(id="t/8b", name="8B", params_b=8.0, layers=32, hidden_dim=4096,
+                  attn_heads=32, kv_heads=8, head_dim=128)
+    g = GpuSpec(id="g", name="g", vram_gb=24)
+    r16 = estimate(EstimateInput(model=m, gpu=g, quant="gguf-q4_k_m",
+                                 context_len=8192, engine="llama_cpp", kv_quant="fp16"))
+    r8 = estimate(EstimateInput(model=m, gpu=g, quant="gguf-q4_k_m",
+                                context_len=8192, engine="llama_cpp", kv_quant="q8_0"))
+    assert abs(r8.breakdown.kv_cache - r16.breakdown.kv_cache * (8.5 / 8 / 2)) < 0.01
+
+
 def test_orchestrator_truncates_leak():
     """累积回答出现提示词原文 → 停流 + 截断提示。"""
     from vram_calc.assistant import orchestrator

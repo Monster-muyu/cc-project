@@ -114,6 +114,7 @@ async function init() {
   await loadDropdowns();
   // tp/pp/ep are now free number inputs -- nothing to populate
   bindEvents();
+  syncKvOptions();
   onContextInput();
   onModelChange();
   recalc();
@@ -129,6 +130,18 @@ async function loadDropdowns() {
   gs.innerHTML = "";
   ALL_GPUS.forEach((g) => gs.add(new Option(`${g.name} (${g.vram_gb}GB)`, g.id)));
   if (cur) gs.value = cur;
+}
+
+// KV 精度按引擎联动：vLLM/SGLang 只有 fp16/fp8；llama.cpp/Ollama 走 GGUF k-quants
+const KV_OPTS = {
+  vllm: ["fp16", "fp8"], sglang: ["fp16", "fp8"],
+  llama_cpp: ["fp16", "q8_0", "q4_0"], ollama: ["fp16", "q8_0", "q4_0"],
+};
+function syncKvOptions() {
+  const sel = $id("kv_quant"), cur = sel.value;
+  const opts = KV_OPTS[$id("engine").value] || KV_OPTS.vllm;
+  sel.innerHTML = opts.map(o => `<option value="${o}">${o}</option>`).join("");
+  sel.value = opts.includes(cur) ? cur : "fp16";
 }
 
 // FP8 hardware check: FP8 compute units exist only from Ada(sm89)/Hopper(sm90)+.
@@ -207,7 +220,7 @@ function bindEvents() {
       if (id === "context_len") onContextInput();
       if (id === "model" || id === "gpu_count") onModelChange();
       if (id === "tp" || id === "pp" || id === "ep") rebalanceParallel(id);
-      if (id === "engine") applyParallelStrategy();   // 引擎切换重排并行（llama/ollama 强制按层）
+      if (id === "engine") { applyParallelStrategy(); syncKvOptions(); }   // 引擎切换重排并行+KV 档位
       if (id === "gpu" || id === "quant" || id === "kv_quant" || id === "engine") syncGpuCapability();
       debounced();
     }));
