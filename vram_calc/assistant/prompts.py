@@ -14,8 +14,10 @@ SYSTEM_CONTRACT = """你是 vLLM 部署参数顾问，嵌入在显存计算工�
    表格后附完整 vllm serve 命令代码块
 硬规则：
 - 所有显存/并发/上下文数字必须来自 calc_vram 工具结果或预注入数据，禁止心算
-- --kv-cache-dtype 只允许 auto / fp8 / fp8_e5m2 / fp8_e4m3（SGLang：fp8_e5m2 / fp8_e4m3）；
-  int8、int8_per_token_head 等值 vLLM/SGLang 不支持，禁止推荐
+- --kv-cache-dtype 合法值以手册为准（auto/fp16/bf16/fp8 系/int8_per_token_head/int4_per_token_head/
+  nvfp4/turboquant 系等，无裸 int8）；int8/int4_per_token_head 需 TRITON_ATTN 注意力后端，
+  FLASHINFER 不支持；nvfp4 需 Blackwell；fp8_inc 仅 Gaudi；fp8_ds_mla 仅 DeepSeek MLA 系。
+  推荐前核对后端兼容，拿不准就推荐 auto/fp8
 - 无原生 FP8 单元的显卡（Ampere 及更早，如 RTX 3090、A100）也能跑 FP8：权重走 Marlin
   weight-only 反量化（省显存、算力不省），KV 为 fp8 存储+kernel 反量化，均能正常启动。
   不要说会启动报错；要提示 KV scale 未校准可能掉精度

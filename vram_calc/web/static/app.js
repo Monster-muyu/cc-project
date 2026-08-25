@@ -134,7 +134,8 @@ async function loadDropdowns() {
 
 // KV 精度按引擎联动：vLLM/SGLang 只有 fp16/fp8；llama.cpp/Ollama 走 GGUF k-quants
 const KV_OPTS = {
-  vllm: ["fp16", "fp8"], sglang: ["fp16", "fp8"],
+  vllm: ["fp16", "fp8", "int8_per_token_head", "int4_per_token_head"],
+  sglang: ["fp16", "fp8"],
   llama_cpp: ["fp16", "q8_0", "q4_0"], ollama: ["fp16", "q8_0", "q4_0"],
 };
 function syncKvOptions() {
@@ -155,6 +156,8 @@ function syncGpuCapability() {
   if (!g || g.supports_fp8 === undefined) { el.hidden = true; return; }
   const q = $id("quant").value, kvq = $id("kv_quant").value;
   const msgs = [];
+  if (kvq.endsWith("per_token_head"))
+    msgs.push(`KV 量化 ${kvq}：需配 TRITON_ATTN 注意力后端（--attention-backend TRITON_ATTN）；FLASHINFER 不支持该 dtype`);
   if (!g.supports_fp8) {
     if (kvq === "fp8")
       msgs.push(`KV 量化 fp8:${g.name}(${g.architecture}) 无原生 FP8 单元：能正常启动（fp8 存储+kernel 反量化），但 scale 未校准可能掉精度——对精度敏感就回 fp16`);

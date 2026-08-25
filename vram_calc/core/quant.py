@@ -21,12 +21,14 @@ QUANT_BYTES: dict[str, float] = {
 }
 
 # bytes per KV-cache element by KV precision
-# vLLM/SGLang 的 --kv-cache-dtype 只有 auto/fp8/fp8_e5m2/fp8_e4m3（无 int8）；
+# vLLM 0.24 合法值含 int8_per_token_head/int4_per_token_head（无裸 int8，需 TRITON_ATTN 后端）；
 # llama.cpp/Ollama 走 GGUF k-quants（q8_0/q4_0，块量化按 bpw/8 折算）
 KV_BYTES: dict[str, float] = {
     "fp16": 2.0,
     "bf16": 2.0,
     "fp8": 1.0,
+    "int8_per_token_head": 1.0,
+    "int4_per_token_head": 0.5,
     "q8_0": 8.5 / 8,
     "q4_0": 4.5 / 8,
 }

@@ -59,14 +59,16 @@ def test_chat_endpoint_short_circuits():
 
 
 def test_kv_quant_menu():
-    """KV 精度：vLLM/SGLang 无 int8；llama.cpp/Ollama 有 q8_0/q4_0；字节表覆盖全部档位。"""
+    """KV 精度：无裸 int8；int8/int4_per_token_head 与 GGUF k-quants 各就位。"""
     from vram_calc.core.quant import KV_BYTES, bytes_per_kv
     from vram_calc.web.app import KV_QUANTS
-    assert "int8" not in KV_QUANTS and set(KV_QUANTS) <= {"fp16", "fp8"}   # vLLM/SGLang 档位
+    assert "int8" not in KV_QUANTS and set(KV_QUANTS) <= {"fp16", "fp8"}   # 服务端渲染档位
+    assert KV_BYTES["int8_per_token_head"] == 1.0          # vLLM 0.24 合法值（需 TRITON_ATTN）
+    assert KV_BYTES["int4_per_token_head"] == 0.5
     assert KV_BYTES["q8_0"] == 8.5 / 8 and KV_BYTES["q4_0"] == 4.5 / 8
     assert bytes_per_kv("q8_0") > bytes_per_kv("fp8")    # q8_0 块量化略大于裸 fp8
     try:
-        bytes_per_kv("int8"); assert False, "int8 KV 应被拒绝"
+        bytes_per_kv("int8"); assert False, "裸 int8 KV 应被拒绝"
     except ValueError:
         pass
 
