@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 
 from ..core.estimator import ModelSpec, GpuSpec
 from ..core.cluster import ServerSpec, GpuCount
 from ..core.arch_resolver import resolve_arch, detect_quant
+from ..core.quant import QUANT_BYTES
 
 PKG_DIR = Path(__file__).resolve().parent.parent          # .../vram_calc/
 BUNDLED_DIR = PKG_DIR / "data"
@@ -226,7 +228,19 @@ def fetch_model_preview(repo_id: str, category: str = "llm") -> ModelSpec:
 
     info = model_info(repo_id)
     params_b = _params_from_info(info)
-    cfg_path = hf_hub_download(repo_id, "config.json")
+    try:
+        cfg_path = hf_hub_download(repo_id, "config.json")
+    except Exception:                     # GGUF 仓库无 config.json -> 文件名反推
+        variants = _parse_gguf_variants([
+            {"Path": s.rfilename, "Size": getattr(s, "size", None) or 0}
+            for s in model_info(repo_id, files_metadata=True).siblings or []])
+        if not variants:
+            raise
+
+        def _base_cfg(base: str) -> str:
+            return Path(hf_hub_download(base, "config.json")).read_text(encoding="utf-8")
+
+        return _gguf_model_spec(repo_id, repo_id, variants, category, _base_cfg)
     config = json.loads(Path(cfg_path).read_text(encoding="utf-8"))
     arch = resolve_arch(config)
 
@@ -283,17 +297,119 @@ def _params_from_info(info) -> float | None:
 _MS_BASE = "https://modelscope.cn/api/v1"
 
 
+# ---- GGUF repos: no config.json/safetensors -- params & quants from filenames ----
+# GGUF 仓库只有 .gguf 文件（多套量化变体混放），参数量从最可信变体的字节数反推。
+_GGUF_BUCKETS = (
+    ("gguf-q8_0", ("Q8",)), ("gguf-q6_k", ("Q6",)), ("gguf-q5_k_m", ("Q5",)),
+    ("gguf-q4_k_m", ("Q4", "IQ4")), ("gguf-q3_k_m", ("Q3", "IQ3")),
+    ("gguf-q2_k", ("Q2", "IQ2")), ("bf16", ("BF16",)), ("fp16", ("F16",)),
+)
+
+
+def _gguf_bucket(tag: str) -> str | None:
+    for key, prefixes in _GGUF_BUCKETS:
+        if tag.upper().startswith(prefixes):
+            return key
+    return None                      # F32 等稀有格式跳过
+
+
+def _parse_gguf_variants(files: list[dict]) -> dict[str, int]:
+    """文件列表 -> {量化桶: 总字节}。mmproj(多模态投影)/imatrix 排除，分片合并。"""
+    out: dict[str, int] = {}
+    for f in files:
+        path = f.get("Path") or f.get("Name") or ""
+        if not path.endswith(".gguf"):
+            continue
+        base = path.rsplit("/", 1)[-1]
+        if base.startswith(("mmproj-", "imatrix")):
+            continue
+        stem = re.sub(r"-\d{5}-of-\d{5}\.gguf$", ".gguf", base)   # 分片后缀合并
+        m = re.search(r"-(?:UD-)?([A-Z0-9_]+)\.gguf$", stem)      # UD- = Unsloth Dynamic
+        if not m:
+            continue
+        key = _gguf_bucket(m.group(1))
+        if key:
+            out[key] = out.get(key, 0) + int(f.get("Size") or 0)
+    return out
+
+
+def _params_from_variants(variants: dict[str, int]) -> float:
+    """优先 BF16/F16/Q8_0/Q6_K 反推（bpw 已知最准），兜底任一桶。"""
+    for key in ("bf16", "fp16", "gguf-q8_0", "gguf-q6_k"):
+        if variants.get(key):
+            return variants[key] / QUANT_BYTES[key] / 1e9
+    for key in sorted(variants):
+        if variants[key]:
+            return variants[key] / QUANT_BYTES[key] / 1e9
+    return 0.0
+
+
+def _typical_arch(params_b: float) -> dict:
+    """GGUF 仓库拿不到 config 时的按参数量级兜底架构（预览弹窗可手改）。"""
+    if params_b < 6:
+        layers, hidden, attn = 28, 3584, 28
+    elif params_b < 12:
+        layers, hidden, attn = 32, 4096, 32
+    elif params_b < 24:
+        layers, hidden, attn = 40, 5120, 40
+    elif params_b < 45:
+        layers, hidden, attn = 64, 5120, 40
+    else:
+        layers, hidden, attn = 80, 8192, 64
+    return {"layers": layers, "hidden_dim": hidden, "attn_heads": attn,
+            "kv_heads": 8, "head_dim": 128, "vocab_size": 0,
+            "num_experts": 0, "expert_params_b": 0.0, "kv_layers": 0}
+
+
+def _gguf_model_spec(repo_id: str, spec_id: str, variants: dict[str, int],
+                     category: str, fetch_base_config) -> ModelSpec:
+    """GGUF 仓库通用落库：参数量从变体字节反推，架构优先取 base 仓库 config。"""
+    params_b = _params_from_variants(variants)
+    arch = None
+    base = re.sub(r"-gguf$", "", repo_id, flags=re.I)
+    if base != repo_id:
+        try:
+            arch = resolve_arch(json.loads(fetch_base_config(base)))
+        except Exception:            # base 仓库不存在/无 config -> 按量级兜底
+            arch = None
+    if not arch or not arch.get("layers"):
+        arch = _typical_arch(params_b)
+    pref = "gguf-q4_k_m" if "gguf-q4_k_m" in variants else sorted(variants)[0]
+    return ModelSpec(
+        id=spec_id, name=repo_id.split("/")[-1],
+        params_b=round(params_b, 3), quantizations=tuple(sorted(variants)),
+        category=category, quant=pref, **arch,
+    )
+
+
+def _ms_get(url: str) -> bytes:
+    import urllib.request
+    with urllib.request.urlopen(url, timeout=20) as resp:   # noqa: S310 (https, fixed host)
+        return resp.read()
+
+
 def fetch_modelscope(repo_id: str, category: str = "llm") -> ModelSpec:
     """Fetch arch from ModelScope config.json; params estimated (~3% error, editable).
 
     ModelScope's model-info API has no per-dtype parameter breakdown (only
     StorageSize, unreliable for quantized repos), so we estimate from arch.
+    GGUF repos have no config.json (404) -> params from .gguf file sizes.
     """
-    import urllib.request
+    import urllib.error
 
-    url = f"{_MS_BASE}/models/{repo_id}/repo?FilePath=config.json"
-    with urllib.request.urlopen(url, timeout=20) as resp:   # noqa: S310 (https, fixed host)
-        config = json.loads(resp.read().decode("utf-8"))
+    try:
+        config = json.loads(_ms_get(f"{_MS_BASE}/models/{repo_id}/repo?FilePath=config.json"))
+    except urllib.error.HTTPError as e:
+        if e.code != 404:
+            raise
+        files = json.loads(_ms_get(
+            f"{_MS_BASE}/models/{repo_id}/repo/files?Recursive=true"))["Data"]["Files"]
+        variants = _parse_gguf_variants(files)
+        if not variants:
+            raise ValueError(f"仓库无 config.json 且未找到 .gguf 权重: {repo_id}")
+        return _gguf_model_spec(
+            repo_id, f"ms/{repo_id}", variants, category,
+            lambda base: _ms_get(f"{_MS_BASE}/models/{base}/repo?FilePath=config.json"))
 
     arch = resolve_arch(config)
     params_b = _estimate_params_from_arch(arch, config)

@@ -108,6 +108,28 @@ def test_single_page_commands():
            and "num_ctx 4096" in code
 
 
+def test_gguf_variant_parsing():
+    """GGUF 仓库解析：mmproj/imatrix 排除、分片合并、桶映射、参数反推。"""
+    from vram_calc.repos.store import _params_from_variants, _parse_gguf_variants
+    files = [  # 取自 unsloth/Qwen3.6-27B-GGUF 真实文件列表（截选）
+        {"Path": "mmproj-BF16.gguf", "Size": 931146304},
+        {"Path": "imatrix_unsloth.gguf_file", "Size": 13642656},
+        {"Path": "configuration.json", "Size": 76},
+        {"Path": "BF16/Qwen3.6-27B-BF16-00001-of-00002.gguf", "Size": 50004497824},
+        {"Path": "BF16/Qwen3.6-27B-BF16-00002-of-00002.gguf", "Size": 3803783936},
+        {"Path": "Qwen3.6-27B-Q4_K_M.gguf", "Size": 16817244384},
+        {"Path": "Qwen3.6-27B-Q8_0.gguf", "Size": 28595763424},
+        {"Path": "Qwen3.6-27B-IQ4_XS.gguf", "Size": 15440005344},
+        {"Path": "Qwen3.6-27B-UD-Q2_K_XL.gguf", "Size": 11849779424},
+    ]
+    v = _parse_gguf_variants(files)
+    assert set(v) == {"bf16", "gguf-q4_k_m", "gguf-q8_0", "gguf-q2_k"}
+    assert v["bf16"] == 50004497824 + 3803783936          # 分片合并
+    assert v["gguf-q4_k_m"] == 16817244384 + 15440005344  # Q4_K_M + IQ4_XS 同桶
+    assert _params_from_variants(v) == (50004497824 + 3803783936) / 2 / 1e9  # BF16 优先
+    assert not any("mmproj" in k for k in v)
+
+
 def test_orchestrator_truncates_leak():
     """累积回答出现提示词原文 → 停流 + 截断提示。"""
     from vram_calc.assistant import orchestrator
