@@ -132,21 +132,21 @@ async function loadDropdowns() {
 }
 
 // FP8 hardware check: FP8 compute units exist only from Ada(sm89)/Hopper(sm90)+.
-// On older cards (3090/A100=Ampere sm80-86): FP8 KV cache -> vLLM refuses to start;
-// FP8 weights -> runs but is fake-fp8 (software dequant, no speedup).
+// On older cards (3090/A100=Ampere sm80-86) FP8 still RUNS (verified vLLM 0.24 on
+// 3090: fp8 KV + FLASHINFER starts fine; weights via Marlin weight-only kernel) —
+// it's a software path: no compute speedup, uncalibrated KV scale risks accuracy.
 function syncGpuCapability() {
   const el = $id("fp8-warn");
   if (!el) return;
   const g = ALL_GPUS.find((x) => x.id === $id("gpu").value);
   if (!g || g.supports_fp8 === undefined) { el.hidden = true; return; }
   const q = $id("quant").value, kvq = $id("kv_quant").value;
-  const eng = $id("engine").value;
   const msgs = [];
   if (!g.supports_fp8) {
     if (kvq === "fp8")
-      msgs.push(`KV 量化 fp8:${g.name}(${g.architecture}) 没有 FP8 硬件单元,${eng} 启动时会直接报错(compute capability 不支持)——改回 fp16/int8`);
+      msgs.push(`KV 量化 fp8:${g.name}(${g.architecture}) 无原生 FP8 单元：能正常启动（fp8 存储+kernel 反量化），但 scale 未校准可能掉精度——对精度敏感就回 fp16`);
     if (q === "fp8")
-      msgs.push(`权重量化 fp8:${g.name} 无 FP8 计算路径,即使能加载也只是软件反量化模拟(不省算力、可能更慢)——建议 int8/int4`);
+      msgs.push(`权重量化 fp8:${g.name} 无原生 FP8 单元：走 Marlin weight-only 反量化（显存省一半，算力不省，compute 密集场景可能更慢）`);
   }
   el.hidden = msgs.length === 0;
   el.textContent = msgs.join("; ");

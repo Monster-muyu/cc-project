@@ -45,7 +45,7 @@ async def no_cache(request, call_next):
         resp.headers["Cache-Control"] = "no-cache, must-revalidate"
     return resp
 
-KV_QUANTS = ["fp16", "fp8", "int8"]
+KV_QUANTS = ["fp16", "fp8"]   # vLLM/SGLang 均不支持 int8 KV（auto/fp8/fp8_e5m2/fp8_e4m3）
 
 
 class CalcReq(BaseModel):

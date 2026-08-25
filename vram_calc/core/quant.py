@@ -21,11 +21,11 @@ QUANT_BYTES: dict[str, float] = {
 }
 
 # bytes per KV-cache element by KV precision
+# 注意：vLLM/SGLang 的 --kv-cache-dtype 只有 auto/fp8/fp8_e5m2/fp8_e4m3，没有 int8
 KV_BYTES: dict[str, float] = {
     "fp16": 2.0,
     "bf16": 2.0,
     "fp8": 1.0,
-    "int8": 1.0,
 }
 
 DEFAULT_EXL2_BPW = 4.0

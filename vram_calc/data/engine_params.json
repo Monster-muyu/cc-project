@@ -75,7 +75,7 @@
         "params": [
           {"flag": "--model-path", "type": "str", "default": "必填", "desc": "模型路径或 HF 仓库名", "tip": "量化仓库自动识别（AWQ/GPTQ/FP8）", "modeled": false},
           {"flag": "--context-length", "type": "int", "default": "模型上限", "desc": "覆盖上下文窗口长度", "tip": "截小于模型上限可省一点调度开销（本计算器「上下文」）", "modeled": true},
-          {"flag": "--kv-cache-dtype", "type": "str", "default": "auto", "desc": "KV 精度：auto / fp8_e5m2 / fp8_e4m3", "tip": "FP8 KV 同样需要显卡 FP8 硬件（本计算器「KV 量化」）", "modeled": true},
+          {"flag": "--kv-cache-dtype", "type": "str", "default": "auto", "desc": "KV 精度：auto / fp8_e5m2 / fp8_e4m3（无 int8）", "tip": "无 FP8 硬件的卡也能跑（fp8 存储+反量化），scale 未校准可能掉精度；本计算器「KV 量化」", "modeled": true},
           {"flag": "--mem-fraction-static", "type": "float", "default": "0.88*", "desc": "静态显存占比（权重+KV 池）。*随版本/显存变化", "tip": "语义同 vLLM 的 gpu_memory_utilization（本计算器「显存利用率」）", "modeled": true}
         ]
       },

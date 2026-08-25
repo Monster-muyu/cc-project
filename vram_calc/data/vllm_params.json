@@ -25,7 +25,7 @@
       "name": "显存与 KV 缓存",
       "params": [
         {"flag": "--gpu-memory-utilization", "type": "float", "default": "0.92", "desc": "引擎可用显存比例（权重+激活+KV 池全算在内，0~1）", "tip": "与其它进程共存时调低留余量；本计算器「显存利用率」即此参数", "modeled": true},
-        {"flag": "--kv-cache-dtype", "type": "str", "default": "auto", "desc": "KV 缓存精度：auto / float16 / bfloat16 / fp8 / fp8_inc", "tip": "fp8 使 KV 占用减半，轻微精度损失；本计算器「KV 量化」", "modeled": true},
+        {"flag": "--kv-cache-dtype", "type": "str", "default": "auto", "desc": "KV 缓存精度：auto / fp8 / fp8_e5m2 / fp8_e4m3（无 int8）", "tip": "fp8 使 KV 占用减半；无 FP8 硬件的卡（Ampere 等）也能跑，但 scale 未校准可能掉精度；本计算器「KV 量化」", "modeled": true},
         {"flag": "--kv-cache-memory-bytes", "type": "int", "default": "None", "desc": "直接指定每卡 KV 池字节数（设置后优先于利用率推导）", "tip": "精确定容时用；一般留空让引擎自己算", "modeled": false},
         {"flag": "--swap-space", "type": "int", "default": "4", "desc": "CPU 侧 KV 交换区大小（GB），抢占时换出用", "tip": "频繁抢占的场景适当调大；单位 GiB/每卡", "modeled": false},
         {"flag": "--block-size", "type": "int", "default": "16", "desc": "分页 KV 的块大小（token 数）", "tip": "启动日志 CUDA blocks × 16 = 池容量，用于对账校准", "modeled": false},
