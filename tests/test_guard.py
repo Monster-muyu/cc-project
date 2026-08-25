@@ -86,6 +86,28 @@ def test_llamacpp_kv_estimate():
     assert abs(r8.breakdown.kv_cache - r16.breakdown.kv_cache * (8.5 / 8 / 2)) < 0.01
 
 
+def test_single_page_commands():
+    """单机页 /api/calc 带启动命令，四引擎各自成形。"""
+    from fastapi.testclient import TestClient
+    from vram_calc.web.app import app
+    cli = TestClient(app)
+    base = {"model_id": "meta-llama/Meta-Llama-3-8B", "gpu_id": "rtx-3090",
+            "quant": "fp16", "context_len": 4096}
+    code = cli.post("/api/calc", json={**base, "tp": 2, "kv_quant": "fp8"}).json()["commands"][0]["code"]
+    assert "vllm serve" in code and "--tensor-parallel-size 2" in code \
+           and "--kv-cache-dtype fp8" in code and "--max-num-seqs 1" in code
+    code = cli.post("/api/calc", json={**base, "engine": "sglang"}).json()["commands"][0]["code"]
+    assert "sglang.launch_server" in code
+    code = cli.post("/api/calc", json={**base, "engine": "llama_cpp", "pp": 2,
+                                       "kv_quant": "q8_0"}).json()["commands"][0]["code"]
+    assert "llama-server" in code and "--cache-type-k q8_0" in code \
+           and "--split-mode layer" in code and "--tensor-split" in code
+    code = cli.post("/api/calc", json={**base, "engine": "ollama", "concurrency": 4,
+                                       "kv_quant": "q8_0"}).json()["commands"][0]["code"]
+    assert "OLLAMA_NUM_PARALLEL=4" in code and "OLLAMA_KV_CACHE_TYPE=q8_0" in code \
+           and "num_ctx 4096" in code
+
+
 def test_orchestrator_truncates_leak():
     """累积回答出现提示词原文 → 停流 + 截断提示。"""
     from vram_calc.assistant import orchestrator

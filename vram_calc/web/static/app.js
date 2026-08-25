@@ -295,6 +295,23 @@ function renderResult(r) {
       `<table class="kv-tbl"><tbody>${rows}</tbody></table>${rec}` +
       `<div class="rec hint">你当前 ${fctx(uCtx)}×${uConc} = ${fmt(reqNow)} → ${reqNow <= B ? "✓ 在预算内" : "⚠ 超出"}</div>`;
   } else { kb.className = "kv-box empty"; }
+
+  // 启动命令（随当前配置实时更新）
+  const cmd = $id("cmd-single");
+  if (cmd && r.commands?.length) {
+    cmd.querySelectorAll("pre").forEach(p => p.remove());
+    r.commands.forEach(c => {
+      const pre = document.createElement("pre");
+      pre.innerHTML = `<button class="copybtn" onclick="copyCmd(this)">复制</button>${c.title}\n${c.code}`;
+      cmd.appendChild(pre);
+    });
+  }
+}
+
+function copyCmd(btn) {
+  navigator.clipboard.writeText(btn.parentElement.textContent.replace(/^复制/, "").trim());
+  btn.textContent = "已复制";
+  setTimeout(() => btn.textContent = "复制", 1200);
 }
 
 // ---- SVG charts ----

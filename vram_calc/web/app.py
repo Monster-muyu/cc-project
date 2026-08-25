@@ -19,7 +19,7 @@ from ..core.engines import ENGINES
 from ..core.quant import QUANT_BYTES, bytes_per_kv
 from ..core.cluster import ServerSpec, GpuCount, server_is_mixed
 from ..core.planner import Machine, PlanInput, plan_deployment
-from ..core.commands import render_commands
+from ..core.commands import render_commands, render_single_commands
 from ..assistant.providers import LLMConfig, get_provider, humanize_llm_error
 from ..assistant import orchestrator
 from ..repos import (list_models, list_gpus, get_model, get_gpu,
@@ -194,6 +194,9 @@ def api_calc(req: CalcReq):
         "kv_budget_gb": round(r.kv_budget_gb, 2),
         "decode_tps": r.decode_tps,
         "calibrated": bool(load_calibration().get(f"{req.engine}:{req.gpu_id}")),
+        "commands": [asdict(b) for b in render_single_commands(
+            req.engine, req.model_id, req.context_len, req.concurrency,
+            req.safety_factor, req.kv_quant, req.tp, req.pp, req.ep)],
     }
 
 

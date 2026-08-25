@@ -55,6 +55,34 @@ def _serve_args(p: Plan, model_id: str, ctx: int, util: float,
     return _vllm_serve(p, model_id, ctx, util, kv_quant, ray)
 
 
+def render_single_commands(engine: str, model_id: str, ctx: int, concurrency: int,
+                           util: float, kv_quant: str, tp: int = 1, pp: int = 1,
+                           ep: int = 1) -> list[CommandBlock]:
+    """单机页：按当前配置直接出一条启动命令（多机方案走 render_commands）。"""
+    if engine in ("vllm", "sglang"):
+        shim = Plan(key="single", name="单机", badges=(), tp=tp, pp=pp, ep=ep, dp=1,
+                    verdict="ok", why="", cross_node=False, rows=(),
+                    max_kv_tokens=0, req_tokens=0, concurrency_per_replica=concurrency)
+        return [CommandBlock("单机启动", _serve_args(shim, model_id, ctx, util,
+                                                    kv_quant, False, engine))]
+    if engine == "llama_cpp":
+        a = (f"# -m 换成你的 .gguf 文件路径\nllama-server -m {model_id} \\\n"
+             f"  -ngl 99 -c {ctx} -np {concurrency} -fa")
+        if kv_quant != "fp16":
+            a += f" \\\n  --cache-type-k {kv_quant} --cache-type-v {kv_quant}"
+        if pp > 1:                                    # 按层切分多卡
+            a += f" \\\n  --split-mode layer --tensor-split \"{'1,' * (pp - 1)}1\""
+        a += " \\\n  --host 0.0.0.0 --port 8080"
+        return [CommandBlock("单机启动", a)]
+    # ollama：环境变量控制并发/KV精度，ctx 走 Modelfile；多卡自动按层切分
+    env = f"OLLAMA_NUM_PARALLEL={concurrency}"
+    if kv_quant != "fp16":
+        env += f" OLLAMA_KV_CACHE_TYPE={kv_quant}"
+    code = (f"env {env} ollama serve\n"
+            f"# 上下文：Modelfile 写 PARAMETER num_ctx {ctx} 后 ollama create <名> -f Modelfile")
+    return [CommandBlock("单机启动", code)]
+
+
 def render_commands(p: Plan, model_id: str, context_len: int, concurrency: int,
                     gpu_util: float, kv_quant: str, engine: str = "vllm") -> list[CommandBlock]:
     hosts = p.hosts or (("server-1", ""),)
