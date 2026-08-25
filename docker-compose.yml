@@ -1,13 +1,11 @@
 services:
   vram-calc:
-    build: .
+    image: vram-calc:latest          # 用镜像启动；构建：docker build -t vram-calc:latest .
+    # build: .                       # 需要从源码重建时改回这行并 docker compose up -d --build
     container_name: vram-calc
     ports:
       - "8000:8000"
     volumes:
-      # user-added models/gpus persist across rebuilds (bundled data is in the image)
-      - vramcalc-data:/data
+      # 用户自加的模型/显卡/标定数据落宿主机 ./data（相对 compose 文件），重建容器不丢
+      - ./data:/data
     restart: unless-stopped
-
-volumes:
-  vramcalc-data:
