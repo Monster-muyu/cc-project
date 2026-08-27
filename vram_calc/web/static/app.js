@@ -35,17 +35,25 @@ function syncParallelHint() {
   const layerOnly = eng === "llama_cpp" || eng === "ollama";
   $id("tp").disabled = layerOnly;
   $id("ep").disabled = layerOnly;
-  if ((eng === "vllm" || eng === "sglang") && m && m.attn_heads && t > 1 && m.attn_heads % t !== 0)
-    msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
+  if ((eng === "vllm" || eng === "sglang") && m && t > 1) {
+    if (m.attn_heads && m.attn_heads % t !== 0)
+      msgs.push(`${eng} 要求注意力头数(${m.attn_heads})能被 TP=${t} 整除,否则无法启动——建议改用 PP 或调整为能整除的卡数`);
+    // GDN 混合架构：线性注意力层另有一组头数（Qwen3-Next/3.8 家族=16/32），TP 只认 2 的幂
+    const hybrid = m.kv_layers && m.layers && m.kv_layers < m.layers;
+    if (hybrid && (m.linear_heads ? m.linear_heads % t !== 0 : (t & (t - 1)) !== 0))
+      msgs.push(`GDN 线性注意力头数${m.linear_heads ? `(${m.linear_heads})` : "(该家族为 16/32)"}不能被 TP=${t} 整除,启动会报 "N is not divisible by ${t}"`);
+  }
   th.textContent = msgs.join("; ");
   // also surface the head-divisibility blocker OUTSIDE the collapsed details
   const warn = $id("tp-warn");
   if (warn) {
-    const blocked = (eng === "vllm" || eng === "sglang") && m && m.attn_heads
-      && t > 1 && m.attn_heads % t !== 0;
+    const hybridBlocked = m && m.kv_layers && m.layers && m.kv_layers < m.layers
+      && (m.linear_heads ? m.linear_heads % t !== 0 : (t & (t - 1)) !== 0);
+    const blocked = (eng === "vllm" || eng === "sglang") && m && t > 1
+      && ((m.attn_heads && m.attn_heads % t !== 0) || hybridBlocked);
     warn.hidden = !blocked;
     if (blocked) warn.textContent =
-      `⚠️ ${eng} 无法启动:${m.name} 注意力头数 ${m.attn_heads} 不能被 TP=${t} 整除。改用 PP、换能整除的卡数,或换 llama.cpp 引擎`;
+      `⚠️ ${eng} 无法启动:${m.name} 的头数不能被 TP=${t} 整除(vLLM 启动即报错)。改用能整除的卡数(通常 2/4/8)或用 PP 分层`;
   }
 }
 
@@ -257,6 +265,8 @@ function renderResult(r) {
     `/ 可用 ${r.usable_gb} GB（${hdTxt}）` +
     (r.num_gpus > 1 ? ` · 共 ${r.num_gpus} 卡` : "") +
     (r.calibrated ? ` · <span title="引擎开销已按你的真实日志标定">📐已标定</span>` : "");
+  if (r.tp_warnings && r.tp_warnings.length)
+    v.innerHTML += `<div style="color:${C.crit};margin-top:4px">⛔ ${r.tp_warnings.join("；")}</div>`;
   $id("chart-capacity").innerHTML = capacityBar(r.total_gb, r.capacity_gb, r.usable_gb, r.verdict);
   $id("chart-breakdown").innerHTML = stackedBar(r.breakdown, r.total_gb);
   $id("breakdown-table").innerHTML = breakdownTable(r.breakdown, r.total_gb);

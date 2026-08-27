@@ -7,9 +7,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-from .estimator import ModelSpec, GpuSpec, EstimateInput, estimate
-
-_TP_STEPS = (1, 2, 4, 8, 16, 32, 64)
+from .estimator import ModelSpec, GpuSpec, EstimateInput, estimate, _valid_tps
 
 
 @dataclass(frozen=True)
@@ -30,8 +28,8 @@ class Candidate:
 
 
 def _tp_choices(model: ModelSpec, hi: int) -> list[int]:
-    """合法 TP：2 的幂、整除注意力头数、≤ hi，大到小。"""
-    return [t for t in reversed(_TP_STEPS) if t <= hi and model.attn_heads % t == 0]
+    """合法 TP：estimator._valid_tps（注意力头数 + GDN 线性头约束）、≤ hi，大到小。"""
+    return [t for t in reversed(_valid_tps(model)) if t <= hi]
 
 
 def enumerate_candidates(machines: tuple[Machine, ...], model: ModelSpec) -> list[Candidate]:
@@ -59,7 +57,7 @@ def enumerate_candidates(machines: tuple[Machine, ...], model: ModelSpec) -> lis
     # 4) 跨机 TP：同型号全量拼 TP（兜底，评分时标慢）
     for group in by_type.values():
         total = sum(m.count for m in group)
-        if len(group) >= 2 and total in _TP_STEPS and model.attn_heads % total == 0:
+        if len(group) >= 2 and total in _valid_tps(model):
             out.append(Candidate("tp_cross", total, 1, tuple(group)))
     return out
 

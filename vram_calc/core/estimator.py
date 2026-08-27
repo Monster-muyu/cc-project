@@ -21,6 +21,40 @@ from .engines import get_engine
 
 GB = 1e9  # decimal GB; VRAM is quoted in 10^9 bytes (24 GB card == 24e9)
 
+_TP_POWERS = (1, 2, 4, 8, 16, 32, 64)
+
+
+def _valid_tps(m: ModelSpec) -> list[int]:
+    """vLLM/SGLang 能启动的 TP：2 的幂、整除注意力头数、整除 GDN 线性头数。
+
+    GDN 线性头数未入库时按家族下限 16 兜底（Qwen3-Next/3.8 的 k/v 头都是 2 的幂），
+    宁可少推荐也不给出会 assert 的值（16 is not divisible by 6 这类启动错误）。
+    """
+    binding = m.linear_heads if 0 < m.kv_layers < m.layers else 0
+    if 0 < m.kv_layers < m.layers and not binding:
+        binding = 16
+    return [t for t in _TP_POWERS
+            if (not m.attn_heads or m.attn_heads % t == 0)
+            and (not binding or binding % t == 0)]
+
+
+def tp_warnings(m: ModelSpec, tp: int) -> list[str]:
+    """TP 合法性校验（启动硬约束）。空列表 = 可用；末条附合法 TP 清单。"""
+    if tp <= 1:
+        return []
+    w = []
+    if m.attn_heads and m.attn_heads % tp:
+        w.append(f"注意力头数 {m.attn_heads} 不能被 TP={tp} 整除，vLLM/SGLang 启动直接报错")
+    if 0 < m.kv_layers < m.layers:
+        if m.linear_heads and m.linear_heads % tp:
+            w.append(f"GDN 线性注意力头数 {m.linear_heads} 不能被 TP={tp} 整除，启动直接报错")
+        elif not m.linear_heads and tp & (tp - 1):
+            w.append(f"GDN 混合架构线性注意力头数未入库（该家族为 16/32），TP={tp} 非 2 的幂大概率启动报错")
+    if w:
+        w.append("合法 TP：" + "/".join(map(str, _valid_tps(m))))
+    return w
+
+
 # ponytail: activation is heuristic. Inference activations are small vs training;
 # coeff ~ a handful of activation tensors per token. FlashAttention keeps it low.
 ACTIVATION_COEFF = 12.0
@@ -40,6 +74,9 @@ class ModelSpec:
                                  # GDN/linear-attn hybrids (Qwen3.8/Next): only the
                                  # full-attention layers grow with context; the
                                  # recurrent layers use fixed-size state.
+    linear_heads: int = 0        # GDN: linear-attn key/value head count (binding = min).
+                                 # 0 == unknown -> family convention (Qwen3-Next/3.8
+                                 # use 16/32, both powers of two) caps TP at 2^k.
     vocab_size: int = 0
     num_experts: int = 0         # MoE only; 0 == dense
     expert_params_b: float = 0.0 # MoE: params living in experts (billions)

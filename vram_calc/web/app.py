@@ -14,7 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from ..core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate
+from ..core.estimator import ModelSpec, GpuSpec, EstimateInput, estimate, tp_warnings
 from ..core.engines import ENGINES
 from ..core.quant import QUANT_BYTES, bytes_per_kv
 from ..core.cluster import ServerSpec, GpuCount, server_is_mixed
@@ -162,6 +162,7 @@ def api_calibrate_status():
 def api_models():
     return [{"id": m.id, "name": m.name, "is_moe": bool(m.num_experts),
              "params_b": m.params_b, "category": m.category, "attn_heads": m.attn_heads,
+             "layers": m.layers, "kv_layers": m.kv_layers, "linear_heads": m.linear_heads,
              "quant": m.quant or infer_quant_from_id(m.id)} for m in list_models()]
 
 
@@ -193,6 +194,7 @@ def api_calc(req: CalcReq):
         "max_kv_tokens": r.max_kv_tokens,
         "kv_budget_gb": round(r.kv_budget_gb, 2),
         "decode_tps": r.decode_tps,
+        "tp_warnings": tp_warnings(get_model(req.model_id), req.tp) if req.tp > 1 else [],
         "calibrated": bool(load_calibration().get(f"{req.engine}:{req.gpu_id}")),
         "commands": [asdict(b) for b in render_single_commands(
             req.engine, req.model_id, req.context_len, req.concurrency,

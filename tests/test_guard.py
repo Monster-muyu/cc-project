@@ -130,6 +130,43 @@ def test_gguf_variant_parsing():
     assert not any("mmproj" in k for k in v)
 
 
+def test_tp_divisibility_warnings():
+    """TP 整除校验：注意力头数 + GDN 线性头数（真机案例: Qwen3.8-27B TP=6 报
+    AssertionError: 16 is not divisible by 6，attn_heads=24 却整除 6 —— 单查 attn 会漏）。"""
+    from dataclasses import replace
+    from vram_calc.core.estimator import ModelSpec, tp_warnings
+    from vram_calc.core.planner import _tp_choices
+
+    qwen = ModelSpec(id="t/27b", name="q", params_b=27, layers=64, hidden_dim=5120,
+                     attn_heads=24, kv_heads=4, head_dim=256, kv_layers=16)
+    assert any("TP=6" in w for w in tp_warnings(qwen, 6))       # 24%6==0 也要拦（GDN 兜底）
+    assert any("GDN" in w for w in tp_warnings(qwen, 6))
+    assert "1/2/4/8" in tp_warnings(qwen, 6)[-1]                # 合法清单
+    assert tp_warnings(qwen, 8) == [] and tp_warnings(qwen, 4) == []
+    # 线性头数入库后按真值判
+    q = replace(qwen, linear_heads=16)
+    assert any("16" in w for w in tp_warnings(q, 6)) and tp_warnings(q, 8) == []
+    # 纯注意力模型只受 attn_heads 约束（TP=3 这类非 2 幂不再一刀切）
+    plain = ModelSpec(id="t/p", name="p", params_b=8, layers=32, hidden_dim=4096,
+                      attn_heads=24, kv_heads=24, head_dim=128)
+    assert any("注意力头数" in w for w in tp_warnings(plain, 5))
+    assert tp_warnings(plain, 3) == [] and tp_warnings(plain, 6) == []
+    # 规划页候选同源：GDN 模型永不给出 TP=6
+    assert 6 not in _tp_choices(qwen, 8) and _tp_choices(qwen, 8)[0] == 8
+
+
+def test_calc_api_returns_tp_warnings():
+    from fastapi.testclient import TestClient
+    from vram_calc.web.app import app
+    cli = TestClient(app)
+    # Llama-3-8B: attn 32 头 → TP=6 服务端必拦
+    r = cli.post("/api/calc", json={"model_id": "meta-llama/Meta-Llama-3-8B",
+                                    "gpu_id": "rtx-3090", "tp": 6}).json()
+    assert r["tp_warnings"] and "注意力头数" in r["tp_warnings"][0]
+    assert cli.post("/api/calc", json={"model_id": "meta-llama/Meta-Llama-3-8B",
+                                       "gpu_id": "rtx-3090", "tp": 8}).json()["tp_warnings"] == []
+
+
 def test_orchestrator_truncates_leak():
     """累积回答出现提示词原文 → 停流 + 截断提示。"""
     from vram_calc.assistant import orchestrator

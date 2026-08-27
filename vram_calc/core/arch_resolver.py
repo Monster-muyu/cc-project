@@ -56,11 +56,16 @@ def resolve_arch(config: dict) -> dict:
         # across all layers. For EP sizing only; total params still from safetensors.
         expert_params_b = num_experts * 3 * hidden * intermediate * layers / 1e9
 
+    # GDN linear-attn head count (key/value projections are TP-column-parallel):
+    # the smaller of the two binds TP divisibility ("16 is not divisible by 6").
+    linear_heads = min((h for h in (first("linear_num_key_heads"),
+                                    first("linear_num_value_heads")) if h), default=0)
+
     return {
         "layers": layers, "hidden_dim": hidden, "attn_heads": attn,
         "kv_heads": kv, "head_dim": head_dim, "vocab_size": vocab,
         "num_experts": num_experts, "expert_params_b": round(expert_params_b, 2),
-        "kv_layers": kv_layers,
+        "kv_layers": kv_layers, "linear_heads": linear_heads,
     }
 
 

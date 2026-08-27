@@ -183,7 +183,7 @@ def _dict_to_model(e: dict) -> ModelSpec:
         id=e["id"], name=e.get("name", e["id"]),
         params_b=e["params_b"], layers=e["layers"], hidden_dim=e["hidden_dim"],
         attn_heads=e["attn_heads"], kv_heads=e["kv_heads"], head_dim=e["head_dim"],
-        kv_layers=e.get("kv_layers", 0),
+        kv_layers=e.get("kv_layers", 0), linear_heads=e.get("linear_heads", 0),
         vocab_size=e.get("vocab_size", 0), num_experts=e.get("num_experts", 0),
         expert_params_b=e.get("expert_params_b", 0.0),
         quantizations=tuple(e.get("quantizations", STANDARD_QUANTS)),
@@ -195,7 +195,8 @@ def _dict_to_model(e: dict) -> ModelSpec:
 def _model_to_dict(m: ModelSpec) -> dict:
     return {"id": m.id, "name": m.name, "params_b": m.params_b, "layers": m.layers,
             "hidden_dim": m.hidden_dim, "attn_heads": m.attn_heads, "kv_heads": m.kv_heads,
-            "head_dim": m.head_dim, "kv_layers": m.kv_layers, "vocab_size": m.vocab_size,
+            "head_dim": m.head_dim, "kv_layers": m.kv_layers,
+            "linear_heads": m.linear_heads, "vocab_size": m.vocab_size,
             "num_experts": m.num_experts, "expert_params_b": m.expert_params_b,
             "quantizations": list(STANDARD_QUANTS), "category": m.category, "quant": m.quant}
 
